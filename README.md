@@ -17,4 +17,5 @@ To use it just create a spec and call one of it's Until methods
 ```
 
 GoAwait is based on [Java's Awaitility](https://github.com/awaitility/awaitility)'s DSL.
+
 The polling functions were based on [Bill Kennedy's **retryTimeout** concurrency example](https://github.com/ardanlabs/gotraining/blob/0728ec842fbde65115e1a0a255b62b4a93d4c6a8/topics/go/concurrency/channels/example1/example1.go#L290)
