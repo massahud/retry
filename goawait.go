@@ -31,9 +31,35 @@
 package goawait
 
 import (
+	"context"
 	"fmt"
 	"time"
+
+	pkgerrors "github.com/pkg/errors"
 )
+
+// Until retries the poll function every "retryTime" until it returns true or the context is done
+// Returns error if context is done before poll is true.
+// Returns ctx.Err() as wrapped error it it is not nil
+func Until(ctx context.Context, retryTime time.Duration, poll func(ctx context.Context) bool) error {
+	retry := time.NewTimer(retryTime)
+	for {
+		if poll(ctx) {
+			return nil
+		}
+
+		select {
+		case <-ctx.Done():
+			retry.Stop()
+			if ctx.Err() != nil {
+				return pkgerrors.Wrap(ctx.Err(), "context cancelled:"+ctx.Err().Error())
+			}
+			return fmt.Errorf("context cancelled")
+		case <-retry.C:
+			retry.Reset(retryTime)
+		}
+	}
+}
 
 // DefaultRetryTime: 1 seconds
 var defaultRetryTime = 1 * time.Second
