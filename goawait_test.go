@@ -139,38 +139,30 @@ func TestUntilTrue(t *testing.T) {
 	})
 }
 
-// helper function for examples
-func connectToDatabase(ctx context.Context) error {
-	return nil
-}
-
-// helper function for examples
-func pageHasItem(ctx context.Context) bool {
-	return true
-}
-
 func ExampleUntilNoError() {
-
-	// func connectToDatabase(ctx context.Context) error { ... }
-
-	err := goawait.UntilNoError(context.Background(), 10*time.Millisecond, connectToDatabase)
+	poll := func(ctx context.Context) error {
+		return nil
+	}
+	err := goawait.UntilNoError(context.Background(), 10*time.Millisecond, poll)
 	if err != nil {
 		log.Fatalf("database not ready: %s", err.Error())
 	}
 	fmt.Println("Database ready")
 
-	// Output: Database ready
+	// Output:
+	// Database ready
 }
 
 func ExampleUntilTrue() {
-
-	// func pageHasItem(ctx context.Context) bool { ... }
-
-	err := goawait.UntilTrue(context.Background(), 10*time.Millisecond, pageHasItem)
+	poll := func(ctx context.Context) bool {
+		return true
+	}
+	err := goawait.UntilTrue(context.Background(), 10*time.Millisecond, poll)
 	if err != nil {
 		log.Fatalf("page does not have item")
 	}
 	fmt.Println("page has item, continuing...")
 
-	// Output: page has item, continuing...
+	// Output:
+	// page has item, continuing...
 }

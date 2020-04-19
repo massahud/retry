@@ -16,7 +16,7 @@ func TestAwait_UntilNoError(t *testing.T) {
 	t.Run("should retry until the poll function does not return error", func(t *testing.T) {
 		var calls int
 		await := goawait.NewAwait(time.Second, time.Nanosecond)
-		poll := func(_ context.Context) error {
+		poll := func(context.Context) error {
 			calls++
 			if calls == 3 {
 				return nil
@@ -32,7 +32,7 @@ func TestAwait_UntilNoError(t *testing.T) {
 	t.Run("should return a TimeoutError if max time is reached", func(t *testing.T) {
 		var calls int
 		await := goawait.NewAwait(time.Millisecond, time.Nanosecond)
-		poll := func(_ context.Context) error {
+		poll := func(context.Context) error {
 			calls++
 			return fmt.Errorf("foo %d", calls)
 		}
@@ -171,29 +171,31 @@ func TestAwait_UntilTrue(t *testing.T) {
 }
 
 func ExampleAwait_UntilNoError() {
-
-	// func connectToDatabase(ctx context.Context) error { ... }
-
+	poll := func(ctx context.Context) error {
+		return nil
+	}
 	await := goawait.NewAwait(time.Second, time.Millisecond)
-	err := await.UntilNoError(connectToDatabase)
+	err := await.UntilNoError(poll)
 	if err != nil {
 		log.Fatalf("database not ready: %s", err.Error())
 	}
 	fmt.Println("Database ready")
 
-	// Output: Database ready
+	// Output:
+	// Database ready
 }
 
 func ExampleAwait_UntilTrue() {
-
-	// func pageHasItem(ctx context.Context) bool { ... }
-
+	poll := func(ctx context.Context) bool {
+		return true
+	}
 	await := goawait.NewAwait(time.Second, time.Millisecond)
-	err := await.UntilTrue(pageHasItem)
+	err := await.UntilTrue(poll)
 	if err != nil {
 		log.Fatalf("page does not have item")
 	}
 	fmt.Println("page has item, continuing...")
 
-	// Output: page has item, continuing...
+	// Output:
+	// page has item, continuing...
 }
