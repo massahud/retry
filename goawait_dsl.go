@@ -47,12 +47,12 @@ type Await struct {
 
 // AtMost creates a new Await with a specified timeout
 func AtMost(maxWait time.Duration) Await {
-	return Await{ctx: context.Background(), maxWait: maxWait, retryTime: defaultRetryTime}
+	return Await{ctx: context.Background(), maxWait: maxWait, retryTime: DefaultRetryTime}
 }
 
 // WithContext creates a new Await with a context that can be used for cancelation
 func WithContext(ctx context.Context) Await {
-	return Await{ctx: ctx, maxWait: -1, retryTime: defaultRetryTime}
+	return Await{ctx: ctx, maxWait: -1, retryTime: DefaultRetryTime}
 }
 
 // AtMost configures the maximum await time of the Await
