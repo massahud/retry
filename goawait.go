@@ -47,9 +47,9 @@ import (
 // TimeoutError informs that awaiting was cancelled before poll function returned desired
 // output
 type TimeoutError struct {
-	ctx context.Context
-	start time.Time
-	end time.Time
+	ctx       context.Context
+	start     time.Time
+	end       time.Time
 	lastError error
 }
 
@@ -74,21 +74,27 @@ func (e *TimeoutError) LastError() error {
 // Returns TimeoutError if context is done before poll is true.
 func UntilNoError(ctx context.Context, retryTime time.Duration, poll func(ctx context.Context) error) error {
 	start := time.Now()
-	retry := time.NewTimer(retryTime)
-	var err error
-	for {
-		err = poll(ctx)
 
-		if err == nil {
-			return nil
-		}
+	select {
+	case <-ctx.Done():
+		return &TimeoutError{ctx: ctx, start: start, end: start}
+	default:
+		retry := time.NewTimer(retryTime)
+		var err error
+		for {
+			err = poll(ctx)
 
-		select {
-		case <-ctx.Done():
-			retry.Stop()
-			return &TimeoutError{ctx: ctx, start: start, end: time.Now(), lastError: err}
-		case <-retry.C:
-			retry.Reset(retryTime)
+			if err == nil {
+				return nil
+			}
+
+			select {
+			case <-ctx.Done():
+				retry.Stop()
+				return &TimeoutError{ctx: ctx, start: start, end: time.Now(), lastError: err}
+			case <-retry.C:
+				retry.Reset(retryTime)
+			}
 		}
 	}
 }
@@ -96,7 +102,7 @@ func UntilNoError(ctx context.Context, retryTime time.Duration, poll func(ctx co
 // UntilTrue retries the poll function every "retryTime" until it returns true or the context is done
 // Returns TimeoutError if context is done before poll is true.
 func UntilTrue(ctx context.Context, retryTime time.Duration, poll func(ctx context.Context) bool) error {
-	boolWrap := func (ctx context.Context) error {
+	boolWrap := func(ctx context.Context) error {
 		if poll(ctx) {
 			return nil
 		}

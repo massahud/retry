@@ -35,8 +35,8 @@ import (
 	"time"
 )
 
-// DefaultRetryTime: 1 seconds
-var defaultRetryTime = 1 * time.Second
+// DefaultRetryTime: 100 ms
+var defaultRetryTime = 100 * time.Millisecond
 
 // Await is the GoAwait specification
 type Await struct {
@@ -47,12 +47,12 @@ type Await struct {
 
 // AtMost creates a new Await with a specified timeout and default retry time of 1 second
 func AtMost(maxWait time.Duration) Await {
-	return Await{maxWait: maxWait, retryTime: defaultRetryTime}
+	return Await{ctx: context.Background(), maxWait: maxWait, retryTime: defaultRetryTime}
 }
 
-// WithCtx sets a parent context for await Await. This context can cancel the await when Done()
-func WithCtx(ctx context.Context) Await {
-	return Await{ctx: ctx}
+// WithContext sets a parent context for await Await. This context can cancel the await when Done()
+func WithContext(ctx context.Context) Await {
+	return Await{ctx: ctx, maxWait: -1}
 }
 
 // AtMost configures the maximul await time of the spec
@@ -72,34 +72,29 @@ func (await Await) RetryingEvery(retryTime time.Duration) Await {
 func (await Await) UntilTrue(poll func(ctx context.Context) bool) error {
 	timeoutCtx, cancel := createTimeoutContext(await)
 	defer cancel()
-	return UntilTrue(timeoutCtx, await.retryTime, poll)
-}
-
-func createTimeoutContext(await Await) (context.Context, context.CancelFunc) {
-	var timeoutCtx context.Context
-	var cancel context.CancelFunc
-	if await.ctx != nil {
-		if await.maxWait < 0 {
-			return await.ctx, func() {}
-		}
-		timeoutCtx, cancel = context.WithTimeout(await.ctx, await.maxWait)
-
-	} else {
-		timeoutCtx, cancel = context.WithTimeout(context.Background(), await.maxWait)
+	// poll must receive the await context, not timeoutCtx
+	wrappedPoll := func(_ context.Context) bool {
+		return poll(await.ctx)
 	}
-	return timeoutCtx, cancel
+	return UntilTrue(timeoutCtx, await.retryTime, wrappedPoll)
 }
 
 // UntilNoError executes the polling function until it does not return an error.
-// It returns a TimeoutError on timeout.
+//
+// Returns a TimeoutError on timeout or when the await context is cancelled.
 func (await Await) UntilNoError(poll func(ctx context.Context) error) error {
-	var timeoutCtx context.Context
-	var cancel context.CancelFunc
-	if await.ctx != nil {
-		timeoutCtx, cancel = context.WithTimeout(await.ctx, await.maxWait)
-	} else {
-		timeoutCtx, cancel = context.WithTimeout(context.Background(), await.maxWait)
-	}
+	timeoutCtx, cancel := createTimeoutContext(await)
 	defer cancel()
-	return UntilNoError(timeoutCtx, await.retryTime, poll)
+	// poll must receive the await context, not timeoutCtx
+	wrappedPoll := func(_ context.Context) error {
+		return poll(await.ctx)
+	}
+	return UntilNoError(timeoutCtx, await.retryTime, wrappedPoll)
+}
+
+func createTimeoutContext(await Await) (context.Context, context.CancelFunc) {
+	if await.maxWait < 0 {
+		return await.ctx, func() {}
+	}
+	return context.WithTimeout(context.Background(), await.maxWait)
 }
