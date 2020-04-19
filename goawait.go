@@ -17,107 +17,94 @@
 // Use goawait when you need to wait for asynchronous tasks to complete before continuing normal
 // execution. It is very useful for waiting on integration and end to end tests.
 //
-// To use it just create a spec and call one of it's Until methods
+// Polling
 //
-//     func receivedMessage() bool { ... }
+// GoAwait has polling functions that polls for something until it happens, or until the context
+// is canceled.
 //
-//     goawait.AtMost(10 * time.Second).
-//         WithRetryTimeout(200 * time.Millisecond).
-//         Until(receivedMessage)
+//     goawait.UntilNoError(cancelCtx, 500 * time.Millisecond, connectToDatabase)
 //
-// GoAwait is based on Java's Awaitility's DSL: https://github.com/awaitility/awaitility
-// The polling functions were based on Bill Kennedy's **retryTimeout** concurrency example at
-// https://github.com/ardanlabs/gotraining/blob/0728ec842fbde65115e1a0a255b62b4a93d4c6a8/topics/go/concurrency/channels/example1/example1.go#L290
+//     goawait.Untiltrue(cancelCtx, 500 * time.Millisecond, messageReceived)
+//
+// The polling functions are based on Bill Kennedy's retryTimeout concurrency example(https://github.com/ardanlabs/gotraining/blob/master/topics/go/concurrency/channels/example1/example1.go)
 package goawait
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"time"
 )
 
-// DefaultRetryTime: 1 seconds
-var defaultRetryTime = 1 * time.Second
-
-// Spec is the GoAwait specification
-type Spec struct {
-	maxWait   time.Duration
-	retryTime time.Duration
-}
-
-// Timeout error
+// TimeoutError informs that awaiting was cancelled before poll function returned desired
+// output
 type TimeoutError struct {
-	Spec      Spec
-	LastError error
+	ctx       context.Context
+	start     time.Time
+	end       time.Time
+	lastError error
 }
 
-// Timeout error string
 func (e *TimeoutError) Error() string {
-	return fmt.Sprintf("timed out after %s", e.Spec.maxWait)
+	if e.ctx.Err() != nil {
+		return fmt.Sprintf("context cancelled after %s: %s", e.end.Sub(e.start).String(), e.ctx.Err().Error())
+	}
+	return fmt.Sprintf("context cancelled after %s", e.end.Sub(e.start).String())
 }
 
-// Unwraps the last error received before timeout
+// Unwrap returns the context error, if any
 func (e *TimeoutError) Unwrap() error {
-	return e.LastError
+	return e.ctx.Err()
 }
 
-// AtMost creates a new Spec with a specified timeout and default retry time of 1 second
-func AtMost(maxWait time.Duration) Spec {
-	return Spec{maxWait: maxWait, retryTime: defaultRetryTime}
+// LastError returns the last error returned by the polling function, if any
+func (e *TimeoutError) LastError() error {
+	return e.lastError
 }
 
-// WithRetryInterval configures the Spec retryTime
-func (spec Spec) WithRetryInterval(retryTime time.Duration) Spec {
-	spec.retryTime = retryTime
-	return spec
-}
+// UntilNoError retries the poll function every "retryTime" until it returns nil or the context is done
+//
+// Returns TimeoutError if context is done before poll is true.
+func UntilNoError(ctx context.Context, retryTime time.Duration, poll func(ctx context.Context) error) error {
+	start := time.Now()
 
-// Until executes the polling function until the poll function returns true, or a timeout occurs
-// It returns a TimeoutError on timeout.
-func (spec Spec) Until(poll func() bool) error {
-	timeout := time.NewTimer(spec.maxWait)
-	retry := time.NewTimer(spec.retryTime)
+	select {
+	case <-ctx.Done():
+		return &TimeoutError{ctx: ctx, start: start, end: start}
+	default:
+		retry := time.NewTimer(retryTime)
+		var err error
+		for {
+			err = poll(ctx)
 
-	for {
-		if poll() {
-			return nil
-		}
-
-		retry.Reset(spec.retryTime)
-
-		select {
-		case <-timeout.C:
-			retry.Stop()
-			return &TimeoutError{
-				Spec:      spec,
-				LastError: nil,
+			if err == nil {
+				return nil
 			}
-		case <-retry.C:
+
+			select {
+			case <-ctx.Done():
+				retry.Stop()
+				return &TimeoutError{ctx: ctx, start: start, end: time.Now(), lastError: err}
+			case <-retry.C:
+				retry.Reset(retryTime)
+			}
 		}
 	}
 }
 
-// UntilNoError executes the polling function until it does not return an error.
-// It returns a TimeoutError on timeout.
-func (spec Spec) UntilNoError(poll func() error) error {
-	timeout := time.NewTimer(spec.maxWait)
-	retry := time.NewTimer(spec.retryTime)
-
-	var err error
-	for {
-		if err = poll(); err == nil {
+// UntilTrue retries the poll function every "retryTime" until it returns true or the context is done
+//
+// Returns TimeoutError if context is done before poll is true.
+func UntilTrue(ctx context.Context, retryTime time.Duration, poll func(ctx context.Context) bool) error {
+	boolWrap := func(ctx context.Context) error {
+		if poll(ctx) {
 			return nil
 		}
-
-		retry.Reset(spec.retryTime)
-
-		select {
-		case <-timeout.C:
-			retry.Stop()
-			return &TimeoutError{
-				Spec:      spec,
-				LastError: err,
-			}
-		case <-retry.C:
-		}
+		return errors.New("")
 	}
+	err := UntilNoError(ctx, retryTime, boolWrap)
+	if err != nil {
+		err.(*TimeoutError).lastError = nil
+	}
+	return err
 }

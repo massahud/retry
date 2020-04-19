@@ -1,54 +1,143 @@
-// Copyright 2020 Geraldo Augusto Massahud Rodrigues dos Santos
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-// http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-package goawait
+package goawait_test
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"github.com/massahud/goawait"
+	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
-
-	"github.com/stretchr/testify/assert"
 )
 
-func ExampleSpec_Until() {
-
-	var message string
-
-	t := time.NewTimer(30 * time.Millisecond)
-	go func() {
-		<-t.C
-		message = "Hello, async World"
-	}()
-
-	receivedMessage := func() bool {
-		if message == "" {
-			return false
+func TestUntilNoError(t *testing.T) {
+	t.Run("should return when poll returns no error", func(t *testing.T) {
+		nanoRetry := 1 * time.Nanosecond
+		var calls int
+		noErrorOnThirdCall := func(ctx context.Context) error {
+			if calls >= 3 {
+				return nil
+			}
+			calls++
+			return errors.New("foo")
 		}
-		fmt.Printf("Received message: %s", message)
-		return true
-	}
+		ctx := context.Background()
+		err := goawait.UntilNoError(ctx, nanoRetry, noErrorOnThirdCall)
+		assert.NoError(t, err)
+		assert.Equal(t, 3, calls)
+	})
 
-	AtMost(1 * time.Second).
-		WithRetryInterval(5 * time.Millisecond).
-		Until(receivedMessage)
+	t.Run("should return TimeoutError when context is cancelled before poll is true", func(t *testing.T) {
+		context.Background().Err()
+		ctx, cancel := context.WithCancel(context.Background())
+		pollError := fmt.Errorf("foo")
+		err := goawait.UntilNoError(ctx, 1*time.Nanosecond,
+			func(ctx context.Context) error {
+				cancel()
+				return pollError
+			})
+		if assert.Error(t, err) {
+			assert.IsType(t, &goawait.TimeoutError{}, err)
+			assert.Equal(t, ctx.Err(), errors.Unwrap(err))
+			assert.Equal(t, pollError, err.(*goawait.TimeoutError).LastError())
+		}
+	})
 
-	// Output: Received message: Hello, async World
+	t.Run("should pass ctx to poll function", func(t *testing.T) {
+		ctx := context.WithValue(context.Background(), "foo", "bar")
+		var calls int
+
+		err := goawait.UntilNoError(ctx, 10*time.Millisecond, func(receivedCtx context.Context) error {
+			calls++
+			assert.Equal(t, ctx, receivedCtx)
+			return nil
+		})
+
+		if assert.NoError(t, err) {
+			assert.Equal(t, 1, calls)
+		}
+	})
+
+	t.Run("should not call poll function if ctx is already cancelled", func(t *testing.T) {
+		context.Background().Err()
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		var calls int
+		err := goawait.UntilNoError(ctx, 1*time.Nanosecond,
+			func(ctx context.Context) error {
+				calls++
+				return fmt.Errorf("foo")
+			})
+		if assert.Error(t, err) {
+			assert.Zero(t, calls)
+			assert.Nil(t, err.(*goawait.TimeoutError).LastError())
+		}
+	})
 }
 
-func ExampleSpec_UntilNoError() {
+func TestUntilTrue(t *testing.T) {
+	t.Run("should return when poll is true", func(t *testing.T) {
+		var calls int
+		trueOnThirdCall := func(ctx context.Context) bool {
+			if calls >= 3 {
+				return true
+			}
+			calls++
+			return calls >= 3
+		}
+		err := goawait.UntilTrue(context.Background(), 1*time.Nanosecond, trueOnThirdCall)
+		assert.NoError(t, err)
+		assert.Equal(t, 3, calls)
+	})
+
+	t.Run("should return TimeoutError when context is cancelled before poll is true", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		err := goawait.UntilTrue(ctx, 1*time.Nanosecond,
+			func(ctx context.Context) bool {
+				cancel()
+				return false
+			})
+		if assert.Error(t, err) {
+			assert.IsType(t, &goawait.TimeoutError{}, err)
+			assert.Equal(t, ctx.Err(), errors.Unwrap(err))
+			assert.Nil(t, err.(*goawait.TimeoutError).LastError())
+		}
+	})
+
+	t.Run("should pass ctx to poll function", func(t *testing.T) {
+		ctx := context.WithValue(context.Background(), "foo", "bar")
+		var calls int
+
+		err := goawait.UntilTrue(ctx, 10*time.Millisecond,
+			func(receivedCtx context.Context) bool {
+				calls++
+				assert.Equal(t, ctx, receivedCtx)
+				return true
+			})
+
+		if assert.NoError(t, err) {
+			assert.Equal(t, 1, calls)
+		}
+	})
+
+	t.Run("should not call poll function if ctx is already cancelled", func(t *testing.T) {
+		context.Background().Err()
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		var calls int
+		err := goawait.UntilTrue(ctx, 1*time.Nanosecond,
+			func(ctx context.Context) bool {
+				calls++
+				return false
+			})
+		if assert.Error(t, err) {
+			assert.Zero(t, calls)
+			assert.Nil(t, err.(*goawait.TimeoutError).LastError())
+		}
+	})
+}
+
+func ExampleUntilNoError() {
 
 	var message string
 
@@ -58,7 +147,7 @@ func ExampleSpec_UntilNoError() {
 		message = "Hello, async World"
 	}()
 
-	getMessage := func() error {
+	getMessage := func(_ context.Context) error {
 		if message == "" {
 			return fmt.Errorf("404, no message")
 		}
@@ -66,99 +155,40 @@ func ExampleSpec_UntilNoError() {
 		return nil
 	}
 
-	AtMost(1 * time.Second).
-		WithRetryInterval(5 * time.Millisecond).
-		UntilNoError(getMessage)
+	err := goawait.UntilNoError(context.Background(), 10*time.Millisecond, getMessage)
+
+	if err != nil {
+		fmt.Println("No message received")
+		fmt.Printf("Error: %s\n", err.Error())
+	}
 
 	// Output: Got message: Hello, async World
 }
 
-func TestAtMost(t *testing.T) {
-	t.Run("should create a spec with specified timeout and default retry time", func(t *testing.T) {
-		spec := AtMost(12 * time.Second)
-		assert.Equal(t, Spec{maxWait: 12 * time.Second, retryTime: defaultRetryTime}, spec)
-	})
-}
+func ExampleUntilTrue() {
 
-func TestSpec_WithRetryInterval(t *testing.T) {
-	t.Run("should set the spec retry interval", func(t *testing.T) {
-		spec := AtMost(12 * time.Second).WithRetryInterval(150 * time.Millisecond)
-		assert.Equal(t, Spec{maxWait: 12 * time.Second, retryTime: 150 * time.Millisecond}, spec)
-	})
-}
+	var message string
 
-func TestSpec_Until(t *testing.T) {
-	t.Run("should retry until the poll function returns true", func(t *testing.T) {
-		var called int
-		err := AtMost(1 * time.Second).WithRetryInterval(1 * time.Nanosecond).Until(func() bool {
-			called++
-			if called == 3 {
-				return true
-			}
+	t := time.NewTimer(30 * time.Millisecond)
+	go func() {
+		<-t.C
+		message = "Hello, async World"
+	}()
+
+	receivedMessage := func(_ context.Context) bool {
+		if message == "" {
 			return false
-		})
-		if assert.NoError(t, err) {
-			assert.Equal(t, 3, called)
 		}
-	})
+		fmt.Printf("Received message: %s", message)
+		return true
+	}
 
-	t.Run("should return a TimeoutError if max time is reached", func(t *testing.T) {
-		var called int
-		await := AtMost(1 * time.Millisecond).WithRetryInterval(1 * time.Nanosecond)
-		err := await.Until(func() bool {
-			called++
-			return false
-		})
-		if assert.Error(t, err) {
-			assert.IsType(t, &TimeoutError{}, err)
-			assert.Equal(t, await, err.(*TimeoutError).Spec)
-			assert.Nil(t, err.(*TimeoutError).LastError)
-			assert.Greater(t, called, 0)
-		}
-	})
-}
+	err := goawait.UntilTrue(context.Background(), 10*time.Millisecond, receivedMessage)
 
-func TestSpec_UntilNoError(t *testing.T) {
-	t.Run("should retry until the poll function does not return error", func(t *testing.T) {
-		var called int
-		err := AtMost(1 * time.Second).WithRetryInterval(1 * time.Nanosecond).UntilNoError(func() error {
-			called++
-			if called == 3 {
-				return nil
-			}
-			return errors.New("foo")
-		})
-		if assert.NoError(t, err) {
-			assert.Equal(t, 3, called)
-		}
-	})
+	if err != nil {
+		fmt.Println("No message received")
+		fmt.Printf("Error: %s\n", err.Error())
+	}
 
-	t.Run("should return a TimeoutError if max time is reached", func(t *testing.T) {
-		var called int
-		await := AtMost(1 * time.Millisecond).WithRetryInterval(1 * time.Nanosecond)
-		err := await.UntilNoError(func() error {
-			called++
-			return fmt.Errorf("foo %d", called)
-		})
-		if assert.Error(t, err) {
-			assert.IsType(t, &TimeoutError{}, err)
-			assert.Equal(t, await, err.(*TimeoutError).Spec)
-			assert.Equal(t, fmt.Errorf("foo %d", called), err.(*TimeoutError).LastError)
-			assert.Greater(t, called, 0)
-		}
-	})
-}
-
-func TestTimeoutError_Error(t *testing.T) {
-	t.Run("should return the timeout message", func(t *testing.T) {
-		err := TimeoutError{Spec: AtMost(13 * time.Millisecond), LastError: fmt.Errorf("some error")}
-		assert.EqualError(t, &err, "timed out after 13ms")
-	})
-}
-
-func TestTimeoutError_Unwrap(t *testing.T) {
-	t.Run("should unwrap the last error", func(t *testing.T) {
-		timeoutError := &TimeoutError{Spec: AtMost(13 * time.Millisecond), LastError: fmt.Errorf("some error")}
-		assert.EqualError(t, timeoutError.Unwrap(), "some error")
-	})
+	// Output: Received message: Hello, async World
 }
