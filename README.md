@@ -12,7 +12,7 @@ To use it just create a spec and call one of it's Until methods
   func receivedMessage() bool { ... }
 
   goawait.AtMost(10 * time.Second).
-      WithRetryTimeout(200 * time.Millisecond).
+      RetryingEvery(200 * time.Millisecond).
       Until(receivedMessage)
 ```
 
