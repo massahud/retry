@@ -3,10 +3,10 @@ name: Test
 on:
   
   push:
-    tags-ignore: [ ** ]
+    tags-ignore: [ '**' ]
     branches-ignore: [ master ]
   pull_request:
-    tags-ignore: [ ** ]
+    tags-ignore: [ '**' ]
     branches-ignore: [ master ]
     
 jobs:
