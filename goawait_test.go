@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/massahud/goawait"
 	"github.com/stretchr/testify/assert"
+	"log"
 	"testing"
 	"time"
 )
@@ -137,58 +138,42 @@ func TestUntilTrue(t *testing.T) {
 	})
 }
 
+// helper function for examples
+func connectToDatabase(ctx context.Context) error {
+	return nil
+}
+
+// helper function for examples
+func pageHasItem(ctx context.Context) bool {
+	return true
+}
+
 func ExampleUntilNoError() {
 
-	var message string
+	// func connectToDatabase(ctx context.Context) error { ... }
 
-	t := time.NewTimer(30 * time.Millisecond)
-	go func() {
-		<-t.C
-		message = "Hello, async World"
-	}()
-
-	getMessage := func(_ context.Context) error {
-		if message == "" {
-			return fmt.Errorf("404, no message")
-		}
-		fmt.Printf("Got message: %s", message)
-		return nil
-	}
-
-	err := goawait.UntilNoError(context.Background(), 10*time.Millisecond, getMessage)
+	err := goawait.UntilNoError(context.Background(), 10*time.Millisecond, connectToDatabase)
 
 	if err != nil {
-		fmt.Println("No message received")
-		fmt.Printf("Error: %s\n", err.Error())
+		log.Fatalf("database not ready: %s", err.Error())
 	}
 
-	// Output: Got message: Hello, async World
+	fmt.Println("Database ready")
+
+	// Output: Database ready
 }
 
 func ExampleUntilTrue() {
 
-	var message string
+	// func pageHasItem(ctx context.Context) bool { ... }
 
-	t := time.NewTimer(30 * time.Millisecond)
-	go func() {
-		<-t.C
-		message = "Hello, async World"
-	}()
-
-	receivedMessage := func(_ context.Context) bool {
-		if message == "" {
-			return false
-		}
-		fmt.Printf("Received message: %s", message)
-		return true
-	}
-
-	err := goawait.UntilTrue(context.Background(), 10*time.Millisecond, receivedMessage)
+	err := goawait.UntilTrue(context.Background(), 10*time.Millisecond, pageHasItem)
 
 	if err != nil {
-		fmt.Println("No message received")
-		fmt.Printf("Error: %s\n", err.Error())
+		log.Fatalf("page does not have item")
 	}
 
-	// Output: Received message: Hello, async World
+	fmt.Println( "page has item, continuing...")
+
+	// Output: page has item, continuing...
 }

@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"testing"
 	"time"
 
@@ -171,60 +172,34 @@ func TestAwait_UntilTrue(t *testing.T) {
 
 func ExampleAwait_UntilNoError() {
 
-	var message string
-
-	t := time.NewTimer(30 * time.Millisecond)
-	go func() {
-		<-t.C
-		message = "Hello, async World"
-	}()
-
-	getMessage := func(_ context.Context) error {
-		if message == "" {
-			return fmt.Errorf("404, no message")
-		}
-		fmt.Printf("Got message: %s", message)
-		return nil
-	}
+	// func connectToDatabase(ctx context.Context) error { ... }
 
 	err := goawait.AtMost(1 * time.Second).
 		RetryingEvery(5 * time.Millisecond).
-		UntilNoError(getMessage)
+		UntilNoError(connectToDatabase)
 
 	if err != nil {
-		fmt.Println("No message received")
-		fmt.Printf("Error: %s\n", err.Error())
+		log.Fatalf("database not ready: %s", err.Error())
 	}
 
-	// Output: Got message: Hello, async World
+	fmt.Println("Database ready")
+
+	// Output: Database ready
 }
 
 func ExampleAwait_UntilTrue() {
 
-	var message string
-
-	t := time.NewTimer(30 * time.Millisecond)
-	go func() {
-		<-t.C
-		message = "Hello, async World"
-	}()
-
-	receivedMessage := func(_ context.Context) bool {
-		if message == "" {
-			return false
-		}
-		fmt.Printf("Received message: %s", message)
-		return true
-	}
+	// func pageHasItem(ctx context.Context) bool { ... }
 
 	err := goawait.AtMost(1 * time.Second).
 		RetryingEvery(5 * time.Millisecond).
-		UntilTrue(receivedMessage)
+		UntilTrue(pageHasItem)
 
 	if err != nil {
-		fmt.Println("No message received")
-		fmt.Printf("Error: %s\n", err.Error())
+		log.Fatalf("page does not have item")
 	}
 
-	// Output: Received message: Hello, async World
+	fmt.Println( "page has item, continuing...")
+
+	// Output: page has item, continuing...
 }
