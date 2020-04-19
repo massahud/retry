@@ -1,3 +1,5 @@
+![Go](https://github.com/massahud/goawait/workflows/Go/badge.svg)
+
 GoAwait
 =======
 
