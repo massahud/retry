@@ -25,7 +25,7 @@ func NewAwait(maxWait time.Duration, retryInterval time.Duration) Await {
 }
 
 // NewAwaitContext creates a new Await with a specified timeout provided
-// by the provided context value.
+// by the context value.
 func NewAwaitContext(ctx context.Context, retryInterval time.Duration) Await {
 	return Await{ctx: ctx, retryInterval: retryInterval}
 }
