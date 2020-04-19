@@ -3,43 +3,35 @@
 GoAwait
 =======
 
-GoAwait is a simple module for asynchronous waiting.
+Package goawait is a simple module for asynchronous waiting. Use goawait when
+you need to wait for asynchronous tasks to complete before continuing normal
+execution.
 
-Use goawait when you need to wait for asynchronous tasks to complete before continuing normal execution. 
-It is very useful for waiting on integration and end to end tests.
+GoAwait has two polling functions that take a polling function and execute
+that function until it succeeds or the specified timeout is exceeded.
 
-## Documentation
-
-[GoDoc](https://pkg.go.dev/github.com/massahud/goawait?tab=doc)
-
-### Polling
-
-GoAwait has polling functions that polls for something until it happens, or until the context is canceled.
+Example with Polling function that returns an error:
 
 ```go
-goawait.UntilNoError(cancelCtx, 500 * time.Millisecond, connectToDatabase)
-
-goawait.Untiltrue(cancelCtx, 500 * time.Millisecond, messageReceived)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
+	defer cancel()
+	poll := func(ctx context.Context) error {
+			return errors.New("error message")
+	}
+	if err != goawait.Poll(ctx, 500 * time.Millisecond, poll); err != nil {
+		return err
+	}
 ```
 
-The polling functions are based on [Bill Kennedy's **retryTimeout** concurrency example](https://github.com/ardanlabs/gotraining/blob/master/topics/go/concurrency/channels/example1/example1.go)
-
-### DSL
-
-GoAwait also has a DSL, based on [Awaitility](https://github.com/awaitility/awaitility), to use it 
-just start with AtMost or WithContext functions:
+Example with Polling function that returns a boolean:
 
 ```go
-goawait.AtMost(10 * time.Second).
-    UntilTrue(receivedMessage)
-
-goawait.WithContext(cancelContext).
-    UntilNoError(connectToServer)
-
-goawait.WithContext(cancelContext).
-    AtMost(1 * time.Second).
-    RetryingEvery(10 * time.Millisecond).
-    UntilNoError(connectToServer)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
+	defer cancel()
+	poll := func(ctx context.Context) bool {
+			return false
+	}
+	if err != goawait.PollBool(ctx, 500 * time.Millisecond, poll); err != nil {
+		return err
+	}
 ```
-DSL constructors have a default retry time of 100ms
- 
