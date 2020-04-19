@@ -12,22 +12,21 @@ import (
 type TimeoutError struct {
 	Err     error
 	ErrPoll error
-	start   time.Time
-	end     time.Time
+	since   time.Duration
 }
 
 // Error implements the error interface and returns information about
 // the timeout error.
-func (e *TimeoutError) Error() string {
-	if e.Err != nil {
-		return fmt.Sprintf("context cancelled after %s: %s", e.end.Sub(e.start), e.ErrPoll)
+func (te *TimeoutError) Error() string {
+	if te.Err != nil {
+		return fmt.Sprintf("context cancelled after %v: %s", te.since, te.ErrPoll)
 	}
-	return fmt.Sprintf("context cancelled after %s", e.end.Sub(e.start))
+	return fmt.Sprintf("context cancelled after %v", te.since)
 }
 
 // Unwrap returns the context error, if any
-func (e *TimeoutError) Unwrap() error {
-	return e.Err
+func (te *TimeoutError) Unwrap() error {
+	return te.Err
 }
 
 // UntilNoError calls the poll function every retry interval until the poll
@@ -36,7 +35,7 @@ func UntilNoError(ctx context.Context, retryInterval time.Duration, poll func(ct
 	start := time.Now()
 
 	if ctx.Err() != nil {
-		return &TimeoutError{Err: ctx.Err(), ErrPoll: nil, start: start, end: time.Now()}
+		return &TimeoutError{Err: ctx.Err(), ErrPoll: nil, since: time.Since(start)}
 	}
 
 	var retry *time.Timer
@@ -48,7 +47,7 @@ func UntilNoError(ctx context.Context, retryInterval time.Duration, poll func(ct
 		}
 
 		if ctx.Err() != nil {
-			return &TimeoutError{Err: ctx.Err(), ErrPoll: err, start: start, end: time.Now()}
+			return &TimeoutError{Err: ctx.Err(), ErrPoll: err, since: time.Since(start)}
 		}
 
 		if retry == nil {
@@ -58,7 +57,7 @@ func UntilNoError(ctx context.Context, retryInterval time.Duration, poll func(ct
 		select {
 		case <-ctx.Done():
 			retry.Stop()
-			return &TimeoutError{Err: ctx.Err(), ErrPoll: err, start: start, end: time.Now()}
+			return &TimeoutError{Err: ctx.Err(), ErrPoll: err, since: time.Since(start)}
 		case <-retry.C:
 			retry.Reset(retryInterval)
 		}
