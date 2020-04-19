@@ -7,38 +7,32 @@ import (
 	"time"
 )
 
-// TimeoutError informs that a cancellation took place before the poll
+// Error informs that a cancellation took place before the poll
 // function returned successfully.
-type TimeoutError struct {
-	Err     error
-	ErrPoll error
+type Error struct {
+	errPoll error
 	since   time.Duration
 }
 
 // Error implements the error interface and returns information about
 // the timeout error.
-func (te *TimeoutError) Error() string {
-	if te.Err != nil {
-		return fmt.Sprintf("context cancelled after %v: %s", te.since, te.ErrPoll)
+func (err *Error) Error() string {
+	if err.errPoll != nil {
+		return fmt.Sprintf("context cancelled after %v : poll error %s", err.since, err.errPoll)
 	}
-	return fmt.Sprintf("context cancelled after %v", te.since)
+	return fmt.Sprintf("context cancelled after %v", err.since)
 }
 
 // Unwrap returns the context error, if any
-func (te *TimeoutError) Unwrap() error {
-	return te.Err
+func (err *Error) Unwrap() error {
+	return err.errPoll
 }
 
-// UntilNoError calls the poll function every retry interval until the poll
+// Poll calls the poll function every retry interval until the poll
 // function succeeds or the context times out.
-func UntilNoError(ctx context.Context, retryInterval time.Duration, poll func(ctx context.Context) error) error {
-	start := time.Now()
-
-	if ctx.Err() != nil {
-		return &TimeoutError{Err: ctx.Err(), ErrPoll: nil, since: time.Since(start)}
-	}
-
+func Poll(ctx context.Context, retryInterval time.Duration, poll func(ctx context.Context) error) error {
 	var retry *time.Timer
+	start := time.Now()
 
 	for {
 		err := poll(ctx)
@@ -47,7 +41,7 @@ func UntilNoError(ctx context.Context, retryInterval time.Duration, poll func(ct
 		}
 
 		if ctx.Err() != nil {
-			return &TimeoutError{Err: ctx.Err(), ErrPoll: err, since: time.Since(start)}
+			return &Error{errPoll: err, since: time.Since(start)}
 		}
 
 		if retry == nil {
@@ -57,22 +51,23 @@ func UntilNoError(ctx context.Context, retryInterval time.Duration, poll func(ct
 		select {
 		case <-ctx.Done():
 			retry.Stop()
-			return &TimeoutError{Err: ctx.Err(), ErrPoll: err, since: time.Since(start)}
+			return &Error{errPoll: err, since: time.Since(start)}
 		case <-retry.C:
 			retry.Reset(retryInterval)
 		}
 	}
 }
 
-// UntilTrue calls the poll function every retry interval until the poll
+// PollBool calls the poll function every retry interval until the poll
 // function succeeds or the context times out.
-func UntilTrue(ctx context.Context, retryTime time.Duration, poll func(ctx context.Context) bool) error {
+func PollBool(ctx context.Context, retryTime time.Duration, poll func(ctx context.Context) bool) error {
+	pollErr := errors.New("poll failed")
 	f := func(ctx context.Context) error {
 		if poll(ctx) {
 			return nil
 		}
-		return errors.New("poll failed")
+		return pollErr
 	}
 
-	return UntilNoError(ctx, retryTime, f)
+	return Poll(ctx, retryTime, f)
 }
