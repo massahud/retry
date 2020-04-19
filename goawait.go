@@ -17,24 +17,16 @@
 // Use goawait when you need to wait for asynchronous tasks to complete before continuing normal
 // execution. It is very useful for waiting on integration and end to end tests.
 //
-// It also has a DSL, to use it just start with AtMost or WithContext functions:
+// Polling
 //
-//     goawait.AtMost(10 * time.Second).
-//         RetryingEvery(200 * time.Millisecond).
-//         UntilTrue(receivedMessage)
+// GoAwait has polling functions that polls for something until it happens, or until the context
+// is canceled.
 //
-//     goawait.WithContext(cancelContext).
-//         UntilNoError(connectToServer)
+//     goawait.UntilNoError(cancelCtx, 500 * time.Millisecond, connectToDatabase)
 //
-//     goawait.WithContext(cancelContext).
-//         AtMost(10 * time.Second).
-//         RetryingEvery(10 * time.Second).
-//         UntilNoError(connectToServer)
+//     goawait.Untiltrue(cancelCtx, 500 * time.Millisecond, messageReceived)
 //
-//
-// GoAwait is based on Java's Awaitility's DSL: https://github.com/awaitility/awaitility
-// The polling functions were based on Bill Kennedy's **retryTimeout** concurrency example at
-// https://github.com/ardanlabs/gotraining/blob/0728ec842fbde65115e1a0a255b62b4a93d4c6a8/topics/go/concurrency/channels/example1/example1.go#L290
+// The polling functions are based on Bill Kennedy's retryTimeout concurrency example(https://github.com/ardanlabs/gotraining/blob/master/topics/go/concurrency/channels/example1/example1.go)
 package goawait
 
 import (
@@ -70,7 +62,8 @@ func (e *TimeoutError) LastError() error {
 	return e.lastError
 }
 
-// UntilNoError retries the poll function every "retryTime" until it returns true or the context is done
+// UntilNoError retries the poll function every "retryTime" until it returns nil or the context is done
+//
 // Returns TimeoutError if context is done before poll is true.
 func UntilNoError(ctx context.Context, retryTime time.Duration, poll func(ctx context.Context) error) error {
 	start := time.Now()
@@ -100,6 +93,7 @@ func UntilNoError(ctx context.Context, retryTime time.Duration, poll func(ctx co
 }
 
 // UntilTrue retries the poll function every "retryTime" until it returns true or the context is done
+//
 // Returns TimeoutError if context is done before poll is true.
 func UntilTrue(ctx context.Context, retryTime time.Duration, poll func(ctx context.Context) bool) error {
 	boolWrap := func(ctx context.Context) error {

@@ -12,22 +12,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// GoAwait is a simple module for asynchronous waiting.
+// DSL
 //
-// Use goawait when you need to wait for asynchronous tasks to complete before continuing normal
-// execution. It is very useful for waiting on integration and end to end tests.
-//
-// To use it just create a spec and call one of it's UntilTrue methods
-//
-//     func receivedMessage() bool { ... }
+// GoAwait also has a DSL, based on Awaitility's (https://github.com/awaitility/awaitility),
+// to use it just start with AtMost or WithContext functions:
 //
 //     goawait.AtMost(10 * time.Second).
-//         RetryingEvery(200 * time.Millisecond).
 //         UntilTrue(receivedMessage)
 //
-// GoAwait is based on Java's Awaitility's DSL: https://github.com/awaitility/awaitility
-// The polling functions were based on Bill Kennedy's **retryTimeout** concurrency example at
-// https://github.com/ardanlabs/gotraining/blob/0728ec842fbde65115e1a0a255b62b4a93d4c6a8/topics/go/concurrency/channels/example1/example1.go#L290
+//     goawait.WithContext(cancelContext).
+//         UntilNoError(connectToServer)
+//
+//     goawait.WithContext(cancelContext).
+//         AtMost(1 * time.Second).
+//         RetryingEvery(10 * time.Millisecond).
+//         UntilNoError(connectToServer)
+//
+// DSL constructors have a default retry time of 100ms
 package goawait
 
 import (
@@ -35,27 +36,26 @@ import (
 	"time"
 )
 
-// DefaultRetryTime: 100 ms
-var defaultRetryTime = 100 * time.Millisecond
+const DefaultRetryTime = 100 * time.Millisecond
 
-// Await is the GoAwait specification
+// Await is GoAwait's DSL type, create one with goawait.AtMost or goawait.WithContext functions
 type Await struct {
 	ctx       context.Context
 	maxWait   time.Duration
 	retryTime time.Duration
 }
 
-// AtMost creates a new Await with a specified timeout and default retry time of 1 second
+// AtMost creates a new Await with a specified timeout
 func AtMost(maxWait time.Duration) Await {
 	return Await{ctx: context.Background(), maxWait: maxWait, retryTime: defaultRetryTime}
 }
 
-// WithContext sets a parent context for await Await. This context can cancel the await when Done()
+// WithContext creates a new Await with a context that can be used for cancelation
 func WithContext(ctx context.Context) Await {
-	return Await{ctx: ctx, maxWait: -1}
+	return Await{ctx: ctx, maxWait: -1, retryTime: defaultRetryTime}
 }
 
-// AtMost configures the maximul await time of the spec
+// AtMost configures the maximum await time of the Await
 func (await Await) AtMost(maxWait time.Duration) Await {
 	await.maxWait = maxWait
 	return await
@@ -68,7 +68,8 @@ func (await Await) RetryingEvery(retryTime time.Duration) Await {
 }
 
 // UntilTrue executes the polling function until the poll function returns true, or a timeout occurs
-// It returns a TimeoutError on timeout.
+//
+// Returns a TimeoutError on timeout or when the context is done.
 func (await Await) UntilTrue(poll func(ctx context.Context) bool) error {
 	timeoutCtx, cancel := createTimeoutContext(await)
 	defer cancel()
@@ -81,7 +82,7 @@ func (await Await) UntilTrue(poll func(ctx context.Context) bool) error {
 
 // UntilNoError executes the polling function until it does not return an error.
 //
-// Returns a TimeoutError on timeout or when the await context is cancelled.
+// Returns a TimeoutError on timeout or when the context is done.
 func (await Await) UntilNoError(poll func(ctx context.Context) error) error {
 	timeoutCtx, cancel := createTimeoutContext(await)
 	defer cancel()
