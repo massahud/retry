@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -159,7 +160,7 @@ func PollFirstResult(ctx context.Context, retryTime time.Duration, polls map[str
 		}
 	}
 
-	var onlyOnce sync.Once
+	var results int32
 
 	for name, poll := range polls {
 		name, poll := name, poll
@@ -177,10 +178,9 @@ func PollFirstResult(ctx context.Context, retryTime time.Duration, polls map[str
 				errsLock.Unlock()
 				return
 			}
-			onlyOnce.Do(func() {
+			if atomic.AddInt32(&results, 1) == 1 {
 				firstResult <- FirstResult{Name: name, Result: result}
-			})
-
+			}
 		}()
 	}
 
