@@ -14,8 +14,8 @@ Example with polling function that returns an error:
 ```go
 	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
 	defer cancel()
-	poll := func(ctx context.Context) goawait.Result {
-			return goawait.Result{Err: errors.New("error message")}
+	poll := func(ctx context.Context) (interface{}, error) {
+			return nil, errors.New("error message")
 	}
 	if result != goawait.Poll(ctx, 500*time.Microsecond, poll); result.Err != nil {
 		return result.Err
@@ -23,14 +23,14 @@ Example with polling function that returns an error:
 ```
 
 Example simultaneously polling multiple functions:
-```
+```go
 	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
 	defer cancel()
-	poll1 := func(ctx context.Context) goawait.Result {
-			return goawait.Result{}
+	poll1 := func(ctx context.Context) (interface{}, error) {
+			return nil, nil
 	}
-	poll2 := func(ctx context.Context) goawait.Result {
-			return goawait.Result{Err: errors.New("error message")}
+	poll2 := func(ctx context.Context) (interface{}, error) {
+			return nil, errors.New("error message")
 	}
 	polls := map[string]goawait.PollFunc{"poll1": poll1, "poll2": poll2}
 	results := goawait.PollAll(ctx, 500*time.Microsecond, polls)

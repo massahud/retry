@@ -16,12 +16,12 @@ func TestPoll(t *testing.T) {
 		t.Log("Poll should return because the poll function completes successfully")
 		retryInterval := time.Nanosecond
 		var calls int
-		poll := func(ctx context.Context) goawait.Result {
+		poll := func(ctx context.Context) (interface{}, error) {
 			if calls >= 3 {
-				return goawait.Result{}
+				return nil, nil
 			}
 			calls++
-			return goawait.Result{Err: errors.New("foo")}
+			return nil, errors.New("foo")
 		}
 		result := goawait.Poll(context.Background(), retryInterval, poll)
 		assert.NoError(t, result.Err)
@@ -33,9 +33,9 @@ func TestPoll(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		pollError := fmt.Errorf("foo")
-		poll := func(ctx context.Context) goawait.Result {
+		poll := func(ctx context.Context) (interface{}, error) {
 			cancel()
-			return goawait.Result{Err: pollError}
+			return nil, pollError
 		}
 		result := goawait.Poll(ctx, time.Second, poll)
 		if assert.Error(t, result.Err) {
@@ -49,8 +49,8 @@ func TestPoll(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
 		defer cancel()
 		pollError := fmt.Errorf("foo")
-		poll := func(ctx context.Context) goawait.Result {
-			return goawait.Result{Err: pollError}
+		poll := func(ctx context.Context) (interface{}, error) {
+			return nil, pollError
 		}
 		result := goawait.Poll(ctx, time.Second, poll)
 		if assert.Error(t, result.Err) {
@@ -65,12 +65,12 @@ func TestPollAll(t *testing.T) {
 		t.Log("PollAll should return because all poll functions complete successfully")
 		retryInterval := time.Nanosecond
 		var calls int
-		poll := func(ctx context.Context) goawait.Result {
+		poll := func(ctx context.Context) (interface{}, error) {
 			if calls >= 3 {
-				return goawait.Result{}
+				return nil, nil
 			}
 			calls++
-			return goawait.Result{Err: errors.New("foo")}
+			return nil, errors.New("foo")
 		}
 		polls := map[string]goawait.PollFunc{"poll1": poll, "poll2": poll}
 		results := goawait.PollAll(context.Background(), retryInterval, polls)
@@ -84,9 +84,9 @@ func TestPollAll(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		pollError := fmt.Errorf("foo")
-		poll := func(ctx context.Context) goawait.Result {
+		poll := func(ctx context.Context) (interface{}, error) {
 			cancel()
-			return goawait.Result{Err: pollError}
+			return nil, pollError
 		}
 		polls := map[string]goawait.PollFunc{"poll1": poll, "poll2": poll}
 		results := goawait.PollAll(ctx, time.Second, polls)
@@ -106,11 +106,11 @@ func TestPollAll(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
 		defer cancel()
 		pollError := fmt.Errorf("foo")
-		poll1 := func(ctx context.Context) goawait.Result {
-			return goawait.Result{}
+		poll1 := func(ctx context.Context) (interface{}, error) {
+			return nil, nil
 		}
-		poll2 := func(ctx context.Context) goawait.Result {
-			return goawait.Result{Err: pollError}
+		poll2 := func(ctx context.Context) (interface{}, error) {
+			return nil, pollError
 		}
 		polls := map[string]goawait.PollFunc{"poll1": poll1, "poll2": poll2}
 		results := goawait.PollAll(ctx, time.Second, polls)
@@ -128,17 +128,17 @@ func TestPollAll(t *testing.T) {
 func TestPollFirst(t *testing.T) {
 	t.Run("noerror", func(t *testing.T) {
 		t.Log("PollFirst should the result we chose from three functions.")
-		poll5 := func(ctx context.Context) goawait.Result {
+		poll5 := func(ctx context.Context) (interface{}, error) {
 			time.Sleep(5 * time.Millisecond)
-			return goawait.Result{Value: "5 Milliseconds"}
+			return "5 Milliseconds", nil
 		}
-		poll8 := func(ctx context.Context) goawait.Result {
+		poll8 := func(ctx context.Context) (interface{}, error) {
 			time.Sleep(8 * time.Millisecond)
-			return goawait.Result{Value: "8 Milliseconds"}
+			return "8 Milliseconds", nil
 		}
-		poll12 := func(ctx context.Context) goawait.Result {
+		poll12 := func(ctx context.Context) (interface{}, error) {
 			time.Sleep(12 * time.Millisecond)
-			return goawait.Result{Value: "12 Milliseconds"}
+			return "12 Milliseconds", nil
 		}
 		polls := map[string]goawait.PollFunc{"poll5": poll5, "poll8": poll8, "poll12": poll12}
 		result := goawait.PollFirst(context.Background(), time.Nanosecond, polls)
@@ -148,8 +148,8 @@ func TestPollFirst(t *testing.T) {
 }
 
 func ExamplePoll() {
-	poll := func(ctx context.Context) goawait.Result {
-		return goawait.Result{Err: errors.New("poll fail")}
+	poll := func(ctx context.Context) (interface{}, error) {
+		return nil, errors.New("poll fail")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
 	defer cancel()
@@ -158,11 +158,11 @@ func ExamplePoll() {
 }
 
 func ExamplePollAll() {
-	poll1 := func(ctx context.Context) goawait.Result {
-		return goawait.Result{Err: errors.New("poll1 fail")}
+	poll1 := func(ctx context.Context) (interface{}, error) {
+		return nil, errors.New("poll1 fail")
 	}
-	poll2 := func(ctx context.Context) goawait.Result {
-		return goawait.Result{Err: errors.New("poll1 fail")}
+	poll2 := func(ctx context.Context) (interface{}, error) {
+		return nil, errors.New("poll1 fail")
 	}
 	polls := map[string]goawait.PollFunc{"poll1": poll1, "poll2": poll2}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)

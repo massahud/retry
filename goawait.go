@@ -14,7 +14,7 @@ type Result struct {
 }
 
 // PollFunc is a polling function that returns no error when succeeds
-type PollFunc func(ctx context.Context) Result
+type PollFunc func(ctx context.Context) (interface{}, error)
 
 // Error informs that a cancellation took place before the poll
 // function returned successfully.
@@ -44,13 +44,13 @@ func Poll(ctx context.Context, retryInterval time.Duration, poll PollFunc) Resul
 	start := time.Now()
 
 	for {
-		result := poll(ctx)
-		if result.Err == nil {
-			return result
+		value, err := poll(ctx)
+		if err == nil {
+			return Result{Value: value}
 		}
 
 		if ctx.Err() != nil {
-			return Result{Err: &Error{errPoll: result.Err, since: time.Since(start)}}
+			return Result{Err: &Error{errPoll: err, since: time.Since(start)}}
 		}
 
 		if retry == nil {
@@ -60,7 +60,7 @@ func Poll(ctx context.Context, retryInterval time.Duration, poll PollFunc) Resul
 		select {
 		case <-ctx.Done():
 			retry.Stop()
-			return Result{Err: &Error{errPoll: result.Err, since: time.Since(start)}}
+			return Result{Err: &Error{errPoll: err, since: time.Since(start)}}
 		case <-retry.C:
 			retry.Reset(retryInterval)
 		}
