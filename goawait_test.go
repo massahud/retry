@@ -166,6 +166,31 @@ func TestPollFirst(t *testing.T) {
 		assert.Nil(t, result.Err)
 		assert.Equal(t, result.Value.(string), "8 Milliseconds")
 	})
+
+	t.Run("cancel", func(t *testing.T) {
+		t.Log("PollFirst should return the result from the first successful function.")
+		ch := make(chan string, 2)
+		poll5 := func(ctx context.Context) (interface{}, error) {
+			time.Sleep(5 * time.Millisecond)
+			return "5 Milliseconds", nil
+		}
+		poll8 := func(ctx context.Context) (interface{}, error) {
+			<-ctx.Done()
+			ch <- "8 Milliseconds cancelled"
+			return "8 Milliseconds", nil
+		}
+		poll12 := func(ctx context.Context) (interface{}, error) {
+			<-ctx.Done()
+			ch <- "12 Milliseconds cancelled"
+			return "12 Milliseconds", nil
+		}
+		polls := map[string]goawait.PollFunc{"poll5": poll5, "poll8": poll8, "poll12": poll12}
+		result := goawait.PollFirst(context.Background(), time.Millisecond, polls)
+		assert.Nil(t, result.Err)
+		assert.Equal(t, result.Value.(string), "5 Milliseconds")
+		assert.Equal(t, <-ch, "8 Milliseconds cancelled")
+		assert.Equal(t, <-ch, "12 Milliseconds cancelled")
+	})
 }
 
 func ExamplePoll() {
@@ -192,7 +217,7 @@ func ExamplePollAll() {
 	fmt.Println(results)
 }
 
-func ExamplePollFirstResult() {
+func ExamplePollFirst() {
 	retryInterval := time.Nanosecond
 	faster := func(ctx context.Context) (interface{}, error) {
 		time.Sleep(time.Microsecond)
