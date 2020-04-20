@@ -91,13 +91,16 @@ func PollAll(ctx context.Context, retryTime time.Duration, polls map[string]Poll
 	var wg sync.WaitGroup
 	wg.Add(g)
 
+	var mapLock sync.Mutex
 	errs := make(Errors)
 	for name, poll := range polls {
 		name, poll := name, poll
 		go func() {
 			defer wg.Done()
 			if err := Poll(ctx, retryTime, poll); err != nil {
+				mapLock.Lock()
 				errs[name] = err.(*Error)
+				mapLock.Unlock()
 			}
 		}()
 	}

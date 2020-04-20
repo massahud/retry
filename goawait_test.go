@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -65,12 +66,12 @@ func TestPollAll(t *testing.T) {
 	t.Run("noerror", func(t *testing.T) {
 		t.Log("PollAll should return because all poll functions complete successfully")
 		retryInterval := time.Nanosecond
-		var calls int
+		var calls int32
 		poll := func(ctx context.Context) error {
-			if calls >= 3 {
+			if atomic.LoadInt32(&calls) >= 3 {
 				return nil
 			}
-			calls++
+			atomic.AddInt32(&calls, 1)
 			return errors.New("foo")
 		}
 		polls := map[string]goawait.PollFunc{"poll1": poll, "poll2": poll}
