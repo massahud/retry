@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"testing"
 	"time"
 
@@ -61,75 +60,88 @@ func TestPoll(t *testing.T) {
 	})
 }
 
-func TestPollBool(t *testing.T) {
+func TestPollAll(t *testing.T) {
 	t.Run("noerror", func(t *testing.T) {
-		t.Log("Poll should return because the poll function completes successfully")
+		t.Log("PollAll should return because all poll functions complete successfully")
 		retryInterval := time.Nanosecond
 		var calls int
-		poll := func(ctx context.Context) bool {
+		poll := func(ctx context.Context) error {
 			if calls >= 3 {
-				return true
+				return nil
 			}
 			calls++
-			return false
+			return errors.New("foo")
 		}
-		err := goawait.PollBool(context.Background(), retryInterval, poll)
+		polls := map[string]goawait.PollFunc{"poll1": poll, "poll2": poll}
+		err := goawait.PollAll(context.Background(), retryInterval, polls)
 		assert.NoError(t, err)
-		assert.Equal(t, 3, calls)
 	})
 
 	t.Run("cancel", func(t *testing.T) {
-		t.Log("Poll should return error because the cancel function is called")
+		t.Log("PollAll should return errors because the cancel function was called")
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
-		poll := func(ctx context.Context) bool {
+		pollError := fmt.Errorf("foo")
+		poll := func(ctx context.Context) error {
 			cancel()
-			return false
+			return pollError
 		}
-		err := goawait.PollBool(ctx, time.Second, poll)
+		polls := map[string]goawait.PollFunc{"poll1": poll, "poll2": poll}
+		err := goawait.PollAll(ctx, time.Second, polls)
 		if assert.Error(t, err) {
-			assert.IsType(t, &goawait.Error{}, err)
+			assert.IsType(t, goawait.Errors{}, err)
+			var errs goawait.Errors
+			assert.True(t, errors.As(err, &errs))
+			assert.Len(t, errs, 2)
+			assert.Equal(t, pollError, errors.Unwrap(errs["poll1"]))
+			assert.Equal(t, pollError, errors.Unwrap(errs["poll2"]))
 		}
 	})
 
 	t.Run("timeout", func(t *testing.T) {
-		t.Log("Poll should return error because the timeout exceeded")
+		t.Log("PollAll should return error because the timeout exceeded and not all functions completed")
 		ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
 		defer cancel()
-		poll := func(ctx context.Context) bool {
-			return false
+		pollError := fmt.Errorf("foo")
+		poll1 := func(ctx context.Context) error {
+			return nil
 		}
-		err := goawait.PollBool(ctx, time.Second, poll)
+		poll2 := func(ctx context.Context) error {
+			return pollError
+		}
+		polls := map[string]goawait.PollFunc{"poll1": poll1, "poll2": poll2}
+		err := goawait.PollAll(ctx, time.Second, polls)
 		if assert.Error(t, err) {
-			assert.IsType(t, &goawait.Error{}, err)
+			assert.IsType(t, goawait.Errors{}, err)
+			var errs goawait.Errors
+			assert.True(t, errors.As(err, &errs))
+			assert.Len(t, errs, 1)
+			assert.Nil(t, errs["poll1"])
+			assert.Equal(t, pollError, errors.Unwrap(errs["poll2"]))
 		}
 	})
 }
 
 func ExamplePoll() {
 	poll := func(ctx context.Context) error {
-		return nil
+		return errors.New("poll fail")
 	}
-	err := goawait.Poll(context.Background(), 10*time.Millisecond, poll)
-	if err != nil {
-		log.Fatalf("database not ready: %s", err)
-	}
-	fmt.Println("Database ready")
-
-	// Output:
-	// Database ready
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
+	defer cancel()
+	err := goawait.Poll(ctx, 2*time.Millisecond, poll)
+	fmt.Println(err)
 }
 
-func ExamplePollBool() {
-	poll := func(ctx context.Context) bool {
-		return true
+func ExamplePollAll() {
+	poll1 := func(ctx context.Context) error {
+		return errors.New("poll1 fail")
 	}
-	err := goawait.PollBool(context.Background(), 10*time.Millisecond, poll)
-	if err != nil {
-		log.Fatalf("page does not have item")
+	poll2 := func(ctx context.Context) error {
+		return errors.New("poll1 fail")
 	}
-	fmt.Println("page has item, continuing...")
-
-	// Output:
-	// page has item, continuing...
+	polls := map[string]goawait.PollFunc{"poll1": poll1, "poll2": poll2}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
+	defer cancel()
+	err := goawait.PollAll(ctx, 2*time.Millisecond, polls)
+	fmt.Println(err)
 }
