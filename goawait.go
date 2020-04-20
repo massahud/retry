@@ -11,6 +11,15 @@ import (
 // PollFunc is a polling function that returns no error when succeeds
 type PollFunc func(ctx context.Context) error
 
+// PollResultFunc is a polling function that returns some result and no error when succeeds
+type PollResultFunc func(ctx context.Context) (interface{}, error)
+
+// FirstResult holds the first received result on PollFirstResult function
+type FirstResult struct {
+	Name   string
+	Result interface{}
+}
+
 // Error informs that a cancellation took place before the poll
 // function returned successfully.
 type Error struct {
@@ -99,4 +108,44 @@ func PollAll(ctx context.Context, retryTime time.Duration, polls map[string]Poll
 		return errs
 	}
 	return nil
+}
+
+// PollFirstResult polls all functions until at least one succeeds or the context times out.
+func PollFirstResult(ctx context.Context, retryTime time.Duration, polls map[string]PollResultFunc) (FirstResult, error) {
+
+	cancelCtx, cancelOthers := context.WithCancel(context.Background())
+	defer cancelOthers()
+
+	var firstResult FirstResult
+	var onlyOnce sync.Once
+
+	wrapCancellation := func(name string, poll PollResultFunc) PollFunc {
+		return func(ctx context.Context) error {
+			select {
+			case <-cancelCtx.Done():
+				return nil
+			default:
+				result, err := poll(ctx)
+				if err != nil {
+					return err
+				}
+				onlyOnce.Do(func() {
+					cancelOthers()
+					firstResult.Name = name
+					firstResult.Result = result
+				})
+				return nil
+			}
+		}
+	}
+
+	wrappedPolls := make(map[string]PollFunc)
+
+	for name, poll := range polls {
+		wrappedPolls[name] = wrapCancellation(name, poll)
+	}
+
+	err := PollAll(ctx, retryTime, wrappedPolls)
+
+	return firstResult, err
 }
