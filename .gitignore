@@ -16,3 +16,4 @@
 
 # IDE's
 .idea
+*.code-workspace
