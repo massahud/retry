@@ -127,7 +127,7 @@ func TestPollAll(t *testing.T) {
 
 func TestPollFirst(t *testing.T) {
 	t.Run("noerror", func(t *testing.T) {
-		t.Log("PollFirst should the result we chose from three functions.")
+		t.Log("PollFirst should return the result we chose from three functions.")
 		poll5 := func(ctx context.Context) (interface{}, error) {
 			time.Sleep(5 * time.Millisecond)
 			return "5 Milliseconds", nil
@@ -141,9 +141,29 @@ func TestPollFirst(t *testing.T) {
 			return "12 Milliseconds", nil
 		}
 		polls := map[string]goawait.PollFunc{"poll5": poll5, "poll8": poll8, "poll12": poll12}
-		result := goawait.PollFirst(context.Background(), time.Nanosecond, polls)
+		result := goawait.PollFirst(context.Background(), time.Millisecond, polls)
 		assert.Nil(t, result.Err)
 		assert.Equal(t, result.Value.(string), "5 Milliseconds")
+	})
+
+	t.Run("waitsuccess", func(t *testing.T) {
+		t.Log("PollFirst should return the result from the first successful function.")
+		poll5 := func(ctx context.Context) (interface{}, error) {
+			time.Sleep(5 * time.Millisecond)
+			return nil, errors.New("some error")
+		}
+		poll8 := func(ctx context.Context) (interface{}, error) {
+			time.Sleep(8 * time.Millisecond)
+			return "8 Milliseconds", nil
+		}
+		poll12 := func(ctx context.Context) (interface{}, error) {
+			time.Sleep(12 * time.Millisecond)
+			return "12 Milliseconds", nil
+		}
+		polls := map[string]goawait.PollFunc{"poll5": poll5, "poll8": poll8, "poll12": poll12}
+		result := goawait.PollFirst(context.Background(), time.Millisecond, polls)
+		assert.Nil(t, result.Err)
+		assert.Equal(t, result.Value.(string), "8 Milliseconds")
 	})
 }
 

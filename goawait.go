@@ -2,6 +2,7 @@ package goawait
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -90,10 +91,11 @@ func PollAll(ctx context.Context, retryTime time.Duration, polls map[string]Poll
 
 // PollFirst calls all the poll functions every retry interval until the poll
 // functions succeeds or the context times out. Once the first polling function
-// returns, this function will return that result.
+// the succeeds returns, this function will return that result.
 func PollFirst(ctx context.Context, retryTime time.Duration, polls map[string]PollFunc) Result {
 	start := time.Now()
-	results := make(chan Result, len(polls))
+	g := len(polls)
+	results := make(chan Result, g)
 
 	for _, poll := range polls {
 		poll := poll
@@ -102,10 +104,16 @@ func PollFirst(ctx context.Context, retryTime time.Duration, polls map[string]Po
 		}()
 	}
 
-	select {
-	case <-ctx.Done():
-		return Result{Err: &Error{since: time.Since(start)}}
-	case result := <-results:
-		return result
+	for i := 0; i < g; i++ {
+		select {
+		case <-ctx.Done():
+			return Result{Err: &Error{since: time.Since(start)}}
+		case result := <-results:
+			if result.Err == nil {
+				return result
+			}
+		}
 	}
+
+	return Result{Err: &Error{errPoll: errors.New("all poll functions failed"), since: time.Since(start)}}
 }
