@@ -38,4 +38,24 @@ Example simultaneously polling multiple functions:
 	}
 ```
 
+Example getting the first success result of multiple functions:
+```
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
+	defer cancel()
+	faster := func(ctx context.Context) (interface{}, error) {
+        time.Sleep(time.Microsecond)
+        return "I'm fast", nil
+    }
+    slower := func(ctx context.Context) (interface{}, error) {
+        time.Sleep(time.Millisecond)
+        return "I'm slow", nil
+    }
+    polls := map[string]goawait.PollResultFunc{"faster": faster, "slower": slower}
+    firstResult, err := goawait.PollFirstResult(context.Background(), retryInterval, polls)
+	if err != nil {
+		return err
+	}
+    fmt.Printlf("function %s returned first, with result: %v\n", firstResult.Name, firstResult.Result) 
+```
+
 [GoDoc](https://pkg.go.dev/github.com/massahud/goawait?tab=doc)

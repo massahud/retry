@@ -214,20 +214,24 @@ func ExamplePollAll() {
 }
 
 func ExamplePollFirstResult() {
-	poll1 := func(ctx context.Context) (interface{}, error) {
-		time.Sleep(time.Millisecond)
-		return "foo", nil
-	}
-	poll2 := func(ctx context.Context) (interface{}, error) {
+	retryInterval := time.Nanosecond
+	faster := func(ctx context.Context) (interface{}, error) {
 		time.Sleep(time.Microsecond)
-		return "bar", nil
+		return "I'm fast", nil
 	}
-	polls := map[string]goawait.PollResultFunc{"poll1": poll1, "poll2": poll2}
+	slower := func(ctx context.Context) (interface{}, error) {
+		time.Sleep(time.Millisecond)
+		return "I'm slow", nil
+	}
+	polls := map[string]goawait.PollResultFunc{"faster": faster, "slower": slower}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Millisecond)
 	defer cancel()
-	result, err := goawait.PollFirstResult(ctx, time.Millisecond, polls)
+	result, err := goawait.PollFirstResult(ctx, retryInterval, polls)
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Println(result)
+	fmt.Printf("function '%s' returned first, result: %v\n", result.Name, result.Result)
+
+	// Output:
+	// function 'faster' returned first, result: I'm fast
 }
