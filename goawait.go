@@ -2,14 +2,20 @@ package goawait
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 )
 
+// Result is what is returned from the api for any poll function call.
+type Result struct {
+	Value interface{}
+	Err   error
+}
+
 // PollFunc is a polling function that returns no error when succeeds
-type PollFunc func(ctx context.Context) error
+type PollFunc func(ctx context.Context) (interface{}, error)
 
 // Error informs that a cancellation took place before the poll
 // function returned successfully.
@@ -32,33 +38,20 @@ func (err *Error) Unwrap() error {
 	return err.errPoll
 }
 
-// Errors provides errors for a set of poll functions that are
-// executed together as a group.
-type Errors map[string]*Error
-
-// Error implements the error interface
-func (errs Errors) Error() string {
-	var b strings.Builder
-	for name, err := range errs {
-		b.WriteString(fmt.Sprintf("%s: %v\n", name, err))
-	}
-	return b.String()
-}
-
 // Poll calls the poll function every retry interval until the poll
 // function succeeds or the context times out.
-func Poll(ctx context.Context, retryInterval time.Duration, poll PollFunc) error {
+func Poll(ctx context.Context, retryInterval time.Duration, poll PollFunc) Result {
 	var retry *time.Timer
 	start := time.Now()
 
 	for {
-		err := poll(ctx)
+		value, err := poll(ctx)
 		if err == nil {
-			return nil
+			return Result{Value: value}
 		}
 
 		if ctx.Err() != nil {
-			return &Error{errPoll: err, since: time.Since(start)}
+			return Result{Err: &Error{errPoll: err, since: time.Since(start)}}
 		}
 
 		if retry == nil {
@@ -68,7 +61,7 @@ func Poll(ctx context.Context, retryInterval time.Duration, poll PollFunc) error
 		select {
 		case <-ctx.Done():
 			retry.Stop()
-			return &Error{errPoll: err, since: time.Since(start)}
+			return Result{Err: &Error{errPoll: err, since: time.Since(start)}}
 		case <-retry.C:
 			retry.Reset(retryInterval)
 		}
@@ -77,26 +70,53 @@ func Poll(ctx context.Context, retryInterval time.Duration, poll PollFunc) error
 
 // PollAll calls all the poll functions every retry interval until the poll
 // functions succeeds or the context times out.
-func PollAll(ctx context.Context, retryTime time.Duration, polls map[string]PollFunc) error {
+func PollAll(ctx context.Context, retryTime time.Duration, polls map[string]PollFunc) map[string]Result {
 	g := len(polls)
 	var wg sync.WaitGroup
 	wg.Add(g)
 
-	errs := make(Errors)
+	results := make(map[string]Result)
 	for name, poll := range polls {
 		name, poll := name, poll
 		go func() {
 			defer wg.Done()
-			if err := Poll(ctx, retryTime, poll); err != nil {
-				errs[name] = err.(*Error)
-			}
+			results[name] = Poll(ctx, retryTime, poll)
 		}()
 	}
 
 	wg.Wait()
 
-	if len(errs) > 0 {
-		return errs
+	return results
+}
+
+// PollFirst calls all the poll functions every retry interval until the poll
+// functions succeeds or the context times out. Once the first polling function
+// the succeeds returns, this function will return that result.
+func PollFirst(ctx context.Context, retryTime time.Duration, polls map[string]PollFunc) Result {
+	start := time.Now()
+	g := len(polls)
+	results := make(chan Result, g)
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	for _, poll := range polls {
+		poll := poll
+		go func() {
+			results <- Poll(ctx, retryTime, poll)
+		}()
 	}
-	return nil
+
+	for i := 0; i < g; i++ {
+		select {
+		case <-ctx.Done():
+			return Result{Err: &Error{since: time.Since(start)}}
+		case result := <-results:
+			if result.Err == nil {
+				return result
+			}
+		}
+	}
+
+	return Result{Err: &Error{errPoll: errors.New("all poll functions failed"), since: time.Since(start)}}
 }
