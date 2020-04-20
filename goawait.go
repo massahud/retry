@@ -142,36 +142,49 @@ func PollAll(ctx context.Context, retryTime time.Duration, polls map[string]Poll
 func PollFirstResult(ctx context.Context, retryTime time.Duration, polls map[string]PollResultFunc) (FirstResult, error) {
 
 	cancel := make(chan interface{})
-
-	var firstResult FirstResult
-	var onlyOnce sync.Once
-	wrapCancellation := func(name string, poll PollResultFunc) PollFunc {
-		return func(ctx context.Context) error {
+	firstResult := make(chan FirstResult)
+	defer close(firstResult)
+	errs := make(Errors)
+	var errsLock sync.Mutex
+	wrapCancellation := func(name string, poll PollResultFunc) PollResultFunc {
+		return func(ctx context.Context) (interface{}, error) {
 			select {
 			case <-cancel:
-				return nil
+				errsLock.Lock()
+				err := errs[name]
+				errsLock.Unlock()
+				return nil, err
 			default:
-				result, err := poll(ctx)
-				if err != nil {
-					return err
-				}
-				onlyOnce.Do(func() {
-					close(cancel)
-					firstResult.Name = name
-					firstResult.Result = result
-				})
-				return nil
+				return poll(ctx)
 			}
 		}
 	}
 
-	wrappedPolls := make(map[string]PollFunc)
+	var onlyOnce sync.Once
+
 
 	for name, poll := range polls {
-		wrappedPolls[name] = wrapCancellation(name, poll)
+		name, poll := name, poll
+		go func() {
+			result, err := PollResult(ctx, retryTime, wrapCancellation(name, poll))
+			if err != nil {
+				errsLock.Lock()
+				errs[name] = err.(*Error)
+				errsLock.Unlock()
+			} else {
+				onlyOnce.Do(func() {
+					firstResult <- FirstResult{Name: name, Result: result}
+				})
+			}
+		}()
 	}
 
-	err := PollAll(ctx, retryTime, wrappedPolls)
-
-	return firstResult, err
+	select {
+		case <-ctx.Done():
+			// FIXME: wait all goroutines to exit, to pass go test -race
+			return FirstResult{}, errs
+		case result := <-firstResult:
+			close(cancel)
+			return result, nil
+	}
 }

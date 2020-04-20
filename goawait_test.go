@@ -215,7 +215,6 @@ func TestPollFirstResult(t *testing.T) {
 			assert.Len(t, errs, 2)
 			assert.Equal(t, pollError, errors.Unwrap(errs["poll1"]))
 			assert.Equal(t, pollError, errors.Unwrap(errs["poll2"]))
-
 		}
 	})
 
