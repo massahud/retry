@@ -5,9 +5,6 @@ on:
   push:
     tags-ignore: [ '**' ]
     branches-ignore: [ master ]
-  pull_request:
-    tags-ignore: [ '**' ]
-    branches-ignore: [ master ]
     
 jobs:
       
@@ -28,7 +25,7 @@ jobs:
       uses: actions/checkout@v2
       
     - name: Test
-      run: go test -v ./...
-    
+      run: go test ./...
+
     - name: Race
       run: go test -race
