@@ -97,6 +97,9 @@ func PollFirst(ctx context.Context, retryTime time.Duration, polls map[string]Po
 	g := len(polls)
 	results := make(chan Result, g)
 
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	for _, poll := range polls {
 		poll := poll
 		go func() {
