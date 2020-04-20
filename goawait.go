@@ -2,6 +2,7 @@ package goawait
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -141,6 +142,7 @@ func PollAll(ctx context.Context, retryTime time.Duration, polls map[string]Poll
 // PollFirstResult polls all functions until at least one succeeds or the context times out.
 func PollFirstResult(ctx context.Context, retryTime time.Duration, polls map[string]PollResultFunc) (FirstResult, error) {
 
+	start := time.Now()
 	cancel := make(chan interface{})
 	firstResult := make(chan FirstResult)
 	defer close(firstResult)
@@ -150,10 +152,7 @@ func PollFirstResult(ctx context.Context, retryTime time.Duration, polls map[str
 		return func(ctx context.Context) (interface{}, error) {
 			select {
 			case <-cancel:
-				errsLock.Lock()
-				err := errs[name]
-				errsLock.Unlock()
-				return nil, err
+				return nil, nil
 			default:
 				return poll(ctx)
 			}
@@ -162,29 +161,41 @@ func PollFirstResult(ctx context.Context, retryTime time.Duration, polls map[str
 
 	var onlyOnce sync.Once
 
-
 	for name, poll := range polls {
 		name, poll := name, poll
 		go func() {
 			result, err := PollResult(ctx, retryTime, wrapCancellation(name, poll))
+
 			if err != nil {
 				errsLock.Lock()
-				errs[name] = err.(*Error)
+				select {
+				case <-ctx.Done():
+					// do not write error on timeout, fixes possible map race
+				default:
+					errs[name] = err.(*Error)
+				}
 				errsLock.Unlock()
-			} else {
-				onlyOnce.Do(func() {
-					firstResult <- FirstResult{Name: name, Result: result}
-				})
+				return
 			}
+			onlyOnce.Do(func() {
+				firstResult <- FirstResult{Name: name, Result: result}
+			})
+
 		}()
 	}
 
 	select {
-		case <-ctx.Done():
-			// FIXME: wait all goroutines to exit, to pass go test -race
-			return FirstResult{}, errs
-		case result := <-firstResult:
-			close(cancel)
-			return result, nil
+	case <-ctx.Done():
+		errsLock.Lock()
+		for name := range polls {
+			if _, ok := errs[name]; !ok {
+				errs[name] = &Error{errPoll: errors.New("timed out"), since: time.Since(start)}
+			}
+		}
+		errsLock.Unlock()
+		return FirstResult{}, errs
+	case result := <-firstResult:
+		close(cancel)
+		return result, nil
 	}
 }

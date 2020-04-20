@@ -213,8 +213,8 @@ func TestPollFirstResult(t *testing.T) {
 			var errs goawait.Errors
 			assert.True(t, errors.As(err, &errs))
 			assert.Len(t, errs, 2)
-			assert.Equal(t, pollError, errors.Unwrap(errs["poll1"]))
-			assert.Equal(t, pollError, errors.Unwrap(errs["poll2"]))
+			assert.Equal(t, "timed out", errors.Unwrap(errs["poll1"]).Error())
+			assert.Equal(t, "timed out", errors.Unwrap(errs["poll2"]).Error())
 		}
 	})
 
@@ -235,8 +235,8 @@ func TestPollFirstResult(t *testing.T) {
 			var errs goawait.Errors
 			assert.True(t, errors.As(err, &errs))
 			assert.Len(t, errs, 2)
-			assert.Equal(t, pollError, errors.Unwrap(errs["poll1"]))
-			assert.Equal(t, pollError, errors.Unwrap(errs["poll2"]))
+			assert.Equal(t, "timed out", errors.Unwrap(errs["poll1"]).Error())
+			assert.Equal(t, "timed out", errors.Unwrap(errs["poll2"]).Error())
 		}
 	})
 }
