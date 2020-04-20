@@ -125,6 +125,28 @@ func TestPollAll(t *testing.T) {
 	})
 }
 
+func TestPollFirst(t *testing.T) {
+	t.Run("noerror", func(t *testing.T) {
+		t.Log("PollFirst should the result we chose from three functions.")
+		poll5 := func(ctx context.Context) goawait.Result {
+			time.Sleep(5 * time.Millisecond)
+			return goawait.Result{Value: "5 Milliseconds"}
+		}
+		poll8 := func(ctx context.Context) goawait.Result {
+			time.Sleep(8 * time.Millisecond)
+			return goawait.Result{Value: "8 Milliseconds"}
+		}
+		poll12 := func(ctx context.Context) goawait.Result {
+			time.Sleep(12 * time.Millisecond)
+			return goawait.Result{Value: "12 Milliseconds"}
+		}
+		polls := map[string]goawait.PollFunc{"poll5": poll5, "poll8": poll8, "poll12": poll12}
+		result := goawait.PollFirst(context.Background(), time.Nanosecond, polls)
+		assert.Nil(t, result.Err)
+		assert.Equal(t, result.Value.(string), "5 Milliseconds")
+	})
+}
+
 func ExamplePoll() {
 	poll := func(ctx context.Context) goawait.Result {
 		return goawait.Result{Err: errors.New("poll fail")}

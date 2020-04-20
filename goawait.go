@@ -87,3 +87,25 @@ func PollAll(ctx context.Context, retryTime time.Duration, polls map[string]Poll
 
 	return results
 }
+
+// PollFirst calls all the poll functions every retry interval until the poll
+// functions succeeds or the context times out. Once the first polling function
+// returns, this function will return that result.
+func PollFirst(ctx context.Context, retryTime time.Duration, polls map[string]PollFunc) Result {
+	start := time.Now()
+	results := make(chan Result, len(polls))
+
+	for _, poll := range polls {
+		poll := poll
+		go func() {
+			results <- Poll(ctx, retryTime, poll)
+		}()
+	}
+
+	select {
+	case <-ctx.Done():
+		return Result{Err: &Error{since: time.Since(start)}}
+	case result := <-results:
+		return result
+	}
+}
