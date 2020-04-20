@@ -116,16 +116,14 @@ func PollAll(ctx context.Context, retryTime time.Duration, polls map[string]Poll
 // PollFirstResult polls all functions until at least one succeeds or the context times out.
 func PollFirstResult(ctx context.Context, retryTime time.Duration, polls map[string]PollResultFunc) (FirstResult, error) {
 
-	cancelCtx, cancelOthers := context.WithCancel(context.Background())
-	defer cancelOthers()
+	cancel := make(chan interface{})
 
 	var firstResult FirstResult
 	var onlyOnce sync.Once
-
 	wrapCancellation := func(name string, poll PollResultFunc) PollFunc {
 		return func(ctx context.Context) error {
 			select {
-			case <-cancelCtx.Done():
+			case <-cancel:
 				return nil
 			default:
 				result, err := poll(ctx)
@@ -133,7 +131,7 @@ func PollFirstResult(ctx context.Context, retryTime time.Duration, polls map[str
 					return err
 				}
 				onlyOnce.Do(func() {
-					cancelOthers()
+					close(cancel)
 					firstResult.Name = name
 					firstResult.Result = result
 				})
