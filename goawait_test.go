@@ -176,11 +176,13 @@ func TestPollFirst(t *testing.T) {
 		}
 		poll8 := func(ctx context.Context) (interface{}, error) {
 			<-ctx.Done()
+			time.Sleep(8 * time.Millisecond)
 			ch <- "8 Milliseconds cancelled"
 			return "8 Milliseconds", nil
 		}
 		poll12 := func(ctx context.Context) (interface{}, error) {
 			<-ctx.Done()
+			time.Sleep(12 * time.Millisecond)
 			ch <- "12 Milliseconds cancelled"
 			return "12 Milliseconds", nil
 		}
