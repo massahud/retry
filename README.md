@@ -11,7 +11,7 @@ GoAwait has functions that take a polling function and execute
 that function until it succeeds or the specified timeout is exceeded.
 
 Example with polling function that returns an error:
-```
+```go
 	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
 	defer cancel()
 	poll := func(ctx context.Context) goawait.Result {
