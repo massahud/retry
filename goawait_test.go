@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"testing"
 	"time"
 
@@ -189,4 +190,27 @@ func ExamplePollAll() {
 	defer cancel()
 	results := goawait.PollAll(ctx, 2*time.Millisecond, polls)
 	fmt.Println(results)
+}
+
+func ExamplePollFirstResult() {
+	retryInterval := time.Nanosecond
+	faster := func(ctx context.Context) (interface{}, error) {
+		time.Sleep(time.Microsecond)
+		return "I'm fast", nil
+	}
+	slower := func(ctx context.Context) (interface{}, error) {
+		time.Sleep(time.Millisecond)
+		return "I'm slow", nil
+	}
+	polls := map[string]goawait.PollFunc{"faster": faster, "slower": slower}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Millisecond)
+	defer cancel()
+	result := goawait.PollFirst(ctx, retryInterval, polls)
+	if result.Err != nil {
+		log.Fatal(result.Err)
+	}
+	fmt.Printf("first result: %v\n", result.Value)
+
+	// Output:
+	// first result: I'm fast
 }
