@@ -62,6 +62,58 @@ func TestPoll(t *testing.T) {
 	})
 }
 
+func TestPollResult(t *testing.T) {
+	t.Run("noerror", func(t *testing.T) {
+		t.Log("Poll should return the result because the poll function completes successfully")
+		retryInterval := time.Nanosecond
+		var calls int
+		poll := func(ctx context.Context) (interface{}, error) {
+			if calls >= 3 {
+				return calls, nil
+			}
+			calls++
+			return calls, errors.New("foo")
+		}
+		result, err := goawait.PollResult(context.Background(), retryInterval, poll)
+		assert.NoError(t, err)
+		assert.Equal(t, calls, result)
+		assert.Equal(t, 3, calls)
+	})
+
+	t.Run("cancel", func(t *testing.T) {
+		t.Log("PollResult should return error because the cancel function is called")
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		pollError := fmt.Errorf("foo")
+		poll := func(ctx context.Context) (interface{}, error) {
+			cancel()
+			return "foo", pollError
+		}
+		result, err := goawait.PollResult(ctx, time.Second, poll)
+		if assert.Error(t, err) {
+			assert.IsType(t, &goawait.Error{}, err)
+			assert.Nil(t, result)
+			assert.Equal(t, pollError, errors.Unwrap(err))
+		}
+	})
+
+	t.Run("timeout", func(t *testing.T) {
+		t.Log("PollResult should return error because the timeout exceeded")
+		ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
+		defer cancel()
+		pollError := fmt.Errorf("foo")
+		poll := func(ctx context.Context) (interface{}, error) {
+			return "123", pollError
+		}
+		result, err := goawait.PollResult(ctx, time.Second, poll)
+		if assert.Error(t, err) {
+			assert.IsType(t, &goawait.Error{}, err)
+			assert.Nil(t, result)
+			assert.Equal(t, pollError, errors.Unwrap(err))
+		}
+	})
+}
+
 func TestPollAll(t *testing.T) {
 	t.Run("noerror", func(t *testing.T) {
 		t.Log("PollAll should return because all poll functions complete successfully")
@@ -198,6 +250,19 @@ func ExamplePoll() {
 	defer cancel()
 	err := goawait.Poll(ctx, time.Millisecond, poll)
 	fmt.Println(err)
+}
+
+func ExamplePollResult() {
+	poll := func(ctx context.Context) (interface{}, error) {
+		return "foo", nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Millisecond)
+	defer cancel()
+	result, err := goawait.PollResult(ctx, time.Millisecond, poll)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(result)
 }
 
 func ExamplePollAll() {

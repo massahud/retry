@@ -84,6 +84,31 @@ func Poll(ctx context.Context, retryInterval time.Duration, poll PollFunc) error
 	}
 }
 
+// wrapResult is a helper function to wrap a PollResultFunc into a PollFunc.
+// The result is put into result parameter.
+func wrapResult(poll PollResultFunc, result *interface{}) PollFunc {
+	return func(ctx context.Context) error {
+		var err error
+		*result, err = poll(ctx)
+		if err != nil {
+			return err
+		}
+		return nil
+	}
+}
+
+// PollResult calls the poll function every retry interval until the poll
+// function succeeds or the context times out.
+// It returns the result in case of a success execution
+func PollResult(ctx context.Context, retryInterval time.Duration, poll PollResultFunc) (interface{}, error) {
+	var result interface{}
+
+	if err := Poll(ctx, retryInterval, wrapResult(poll, &result)); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
 // PollAll calls all the poll functions every retry interval until the poll
 // functions succeeds or the context times out.
 func PollAll(ctx context.Context, retryTime time.Duration, polls map[string]PollFunc) error {
