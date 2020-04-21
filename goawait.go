@@ -1,4 +1,4 @@
-package goawait
+package await
 
 import (
 	"context"
@@ -90,14 +90,14 @@ func pollMap(ctx context.Context, retry time.Duration, pollers map[string]PollFu
 
 // Poll calls the poll function every retry interval until the poll
 // function succeeds or the context times out.
-func Poll(ctx context.Context, retryInterval time.Duration, pf PollFunc) Result {
+func Func(ctx context.Context, retryInterval time.Duration, pf PollFunc) Result {
 	res := poll(ctx, retryInterval, "", pf)
 	return res.Result
 }
 
 // PollAll calls all the poll functions every retry interval until the poll
 // functions succeeds or the context times out.
-func PollAll(ctx context.Context, retryTime time.Duration, polls map[string]PollFunc) map[string]Result {
+func All(ctx context.Context, retryTime time.Duration, polls map[string]PollFunc) map[string]Result {
 	g := len(polls)
 	var wg sync.WaitGroup
 	wg.Add(g)
@@ -115,7 +115,7 @@ func PollAll(ctx context.Context, retryTime time.Duration, polls map[string]Poll
 // PollFirst calls all the poll functions every retry interval until the poll
 // functions succeeds or the context times out. Once the first polling function
 // the succeeds returns, this function will return that result.
-func PollFirst(ctx context.Context, retryTime time.Duration, polls map[string]PollFunc) Result {
+func First(ctx context.Context, retryTime time.Duration, polls map[string]PollFunc) Result {
 	start := time.Now()
 
 	// iterate over results of pollMap() and return the first value

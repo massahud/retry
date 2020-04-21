@@ -31,4 +31,4 @@ Example simultaneously polling multiple functions:
 		fmt.Println("Name:", name, "result:", result)
 	}
 */
-package goawait
+package await
