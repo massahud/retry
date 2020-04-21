@@ -76,11 +76,15 @@ func PollAll(ctx context.Context, retryTime time.Duration, polls map[string]Poll
 	wg.Add(g)
 
 	results := make(map[string]Result)
+	var resultsLock sync.Mutex
+
 	for name, poll := range polls {
 		name, poll := name, poll
 		go func() {
 			defer wg.Done()
+			resultsLock.Lock()
 			results[name] = Poll(ctx, retryTime, poll)
+			resultsLock.Unlock()
 		}()
 	}
 
