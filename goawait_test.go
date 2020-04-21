@@ -187,7 +187,9 @@ func TestPollFirst(t *testing.T) {
 			return "12 Milliseconds", nil
 		}
 		polls := map[string]goawait.PollFunc{"poll5": poll5, "poll8": poll8, "poll12": poll12}
-		result := goawait.PollFirst(context.Background(), time.Millisecond, polls)
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+		defer cancel()
+		result := goawait.PollFirst(ctx, time.Millisecond, polls)
 		assert.Nil(t, result.Err)
 		assert.Equal(t, result.Value.(string), "5 Milliseconds")
 		assert.Equal(t, <-ch, "8 Milliseconds cancelled")
