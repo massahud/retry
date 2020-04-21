@@ -16,17 +16,12 @@ func TestPoll(t *testing.T) {
 	t.Run("noerror", func(t *testing.T) {
 		t.Log("Poll should return because the poll function completes successfully")
 		retryInterval := time.Nanosecond
-		var calls int
 		poll := func(ctx context.Context) (interface{}, error) {
-			if calls >= 3 {
-				return nil, nil
-			}
-			calls++
-			return nil, errors.New("foo")
+			time.Sleep(time.Millisecond)
+			return nil, nil
 		}
 		result := await.Func(context.Background(), retryInterval, poll)
 		assert.NoError(t, result.Err)
-		assert.Equal(t, 3, calls)
 	})
 
 	t.Run("cancel", func(t *testing.T) {
@@ -65,13 +60,9 @@ func TestPollAll(t *testing.T) {
 	t.Run("noerror", func(t *testing.T) {
 		t.Log("PollAll should return because all poll functions complete successfully")
 		retryInterval := time.Nanosecond
-		var calls int
 		poll := func(ctx context.Context) (interface{}, error) {
-			if calls >= 3 {
-				return nil, nil
-			}
-			calls++
-			return nil, errors.New("foo")
+			time.Sleep(time.Millisecond)
+			return nil, nil
 		}
 		polls := map[string]await.PollFunc{"poll1": poll, "poll2": poll}
 		results := await.All(context.Background(), retryInterval, polls)
