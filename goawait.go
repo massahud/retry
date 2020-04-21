@@ -73,17 +73,14 @@ func poll(ctx context.Context, retry time.Duration, name string, poll PollFunc) 
 
 func pollMap(ctx context.Context, retry time.Duration, pollers map[string]PollFunc) <-chan namedResult {
 	rc := make(chan namedResult, len(pollers))
-
 	go func() {
 		wg := sync.WaitGroup{}
 
 		wg.Add(len(pollers))
-
 		for n, f := range pollers {
 			n, f := n, f
 			go func() { rc <- poll(ctx, retry, n, f); wg.Done() }()
 		}
-
 		wg.Wait()
 		close(rc)
 	}()
@@ -105,20 +102,12 @@ func PollAll(ctx context.Context, retryTime time.Duration, polls map[string]Poll
 	var wg sync.WaitGroup
 	wg.Add(g)
 
-	mutex := sync.Mutex{}
-	results := make(map[string]Result)
-	for name, poll := range polls {
-		name, poll := name, poll
-		go func() {
-			defer wg.Done()
+	results := map[string]Result{}
 
-			mutex.Lock()
-			results[name] = Poll(ctx, retryTime, poll)
-			mutex.Unlock()
-		}()
+	// iterate over pollMap() results and add each to our results map.
+	for result := range pollMap(ctx, retryTime, polls) {
+		results[result.name] = result.Result
 	}
-
-	wg.Wait()
 
 	return results
 }
@@ -128,29 +117,16 @@ func PollAll(ctx context.Context, retryTime time.Duration, polls map[string]Poll
 // the succeeds returns, this function will return that result.
 func PollFirst(ctx context.Context, retryTime time.Duration, polls map[string]PollFunc) Result {
 	start := time.Now()
-	g := len(polls)
-	results := make(chan Result, g)
 
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	for _, poll := range polls {
-		poll := poll
-		go func() {
-			results <- Poll(ctx, retryTime, poll)
-		}()
-	}
-
-	for i := 0; i < g; i++ {
-		select {
-		case <-ctx.Done():
-			return Result{Err: &Error{since: time.Since(start)}}
-		case result := <-results:
-			if result.Err == nil {
-				return result
-			}
+	// iterate over results of pollMap() and return the first value
+	// from a successful poll.
+	for result := range pollMap(ctx, retryTime, polls) {
+		if result.Result.Err != nil {
+			continue
 		}
+		return result.Result
 	}
 
+	// at this point, no poller ended successfully so return a boilerplate error.
 	return Result{Err: &Error{errPoll: errors.New("all poll functions failed"), since: time.Since(start)}}
 }
