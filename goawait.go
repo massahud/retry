@@ -75,7 +75,6 @@ func pollMap(ctx context.Context, retry time.Duration, pollers map[string]PollFu
 	rc := make(chan namedResult, len(pollers))
 	go func() {
 		wg := sync.WaitGroup{}
-
 		wg.Add(len(pollers))
 		for n, f := range pollers {
 			n, f := n, f
@@ -91,24 +90,17 @@ func pollMap(ctx context.Context, retry time.Duration, pollers map[string]PollFu
 // Poll calls the poll function every retry interval until the poll
 // function succeeds or the context times out.
 func Func(ctx context.Context, retryInterval time.Duration, pf PollFunc) Result {
-	res := poll(ctx, retryInterval, "", pf)
-	return res.Result
+	return poll(ctx, retryInterval, "", pf).Result
 }
 
 // PollAll calls all the poll functions every retry interval until the poll
 // functions succeeds or the context times out.
 func All(ctx context.Context, retryTime time.Duration, polls map[string]PollFunc) map[string]Result {
-	g := len(polls)
-	var wg sync.WaitGroup
-	wg.Add(g)
-
 	results := map[string]Result{}
-
 	// iterate over pollMap() results and add each to our results map.
 	for result := range pollMap(ctx, retryTime, polls) {
 		results[result.name] = result.Result
 	}
-
 	return results
 }
 
