@@ -1,4 +1,4 @@
-package goawait
+package await
 
 import (
 	"context"
@@ -38,9 +38,9 @@ func (err *Error) Unwrap() error {
 	return err.errPoll
 }
 
-// Poll calls the poll function every retry interval until the poll
+// Func calls the poll function every retry interval until the poll
 // function succeeds or the context times out.
-func Poll(ctx context.Context, retryInterval time.Duration, poll PollFunc) Result {
+func Func(ctx context.Context, retryInterval time.Duration, poll PollFunc) Result {
 	var retry *time.Timer
 	start := time.Now()
 
@@ -68,9 +68,9 @@ func Poll(ctx context.Context, retryInterval time.Duration, poll PollFunc) Resul
 	}
 }
 
-// PollAll calls all the poll functions every retry interval until the poll
+// All calls all the poll functions every retry interval until the poll
 // functions succeeds or the context times out.
-func PollAll(ctx context.Context, retryTime time.Duration, polls map[string]PollFunc) map[string]Result {
+func All(ctx context.Context, retryTime time.Duration, polls map[string]PollFunc) map[string]Result {
 	g := len(polls)
 	var wg sync.WaitGroup
 	wg.Add(g)
@@ -84,7 +84,7 @@ func PollAll(ctx context.Context, retryTime time.Duration, polls map[string]Poll
 			defer wg.Done()
 			mu.Lock()
 			{
-				results[name] = Poll(ctx, retryTime, poll)
+				results[name] = Func(ctx, retryTime, poll)
 			}
 			mu.Unlock()
 		}()
@@ -95,10 +95,10 @@ func PollAll(ctx context.Context, retryTime time.Duration, polls map[string]Poll
 	return results
 }
 
-// PollFirst calls all the poll functions every retry interval until the poll
+// First calls all the poll functions every retry interval until the poll
 // functions succeeds or the context times out. Once the first polling function
 // the succeeds returns, this function will return that result.
-func PollFirst(ctx context.Context, retryTime time.Duration, polls map[string]PollFunc) Result {
+func First(ctx context.Context, retryTime time.Duration, polls map[string]PollFunc) Result {
 	start := time.Now()
 	g := len(polls)
 	results := make(chan Result, g)
@@ -109,7 +109,7 @@ func PollFirst(ctx context.Context, retryTime time.Duration, polls map[string]Po
 	for _, poll := range polls {
 		poll := poll
 		go func() {
-			results <- Poll(ctx, retryTime, poll)
+			results <- Func(ctx, retryTime, poll)
 		}()
 	}
 
