@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/massahud/await"
+	await "github.com/massahud/goawait"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -16,17 +16,12 @@ func TestPoll(t *testing.T) {
 	t.Run("noerror", func(t *testing.T) {
 		t.Log("Poll should return because the poll function completes successfully")
 		retryInterval := time.Nanosecond
-		var calls int
 		poll := func(ctx context.Context) (interface{}, error) {
-			if calls >= 3 {
-				return nil, nil
-			}
-			calls++
-			return nil, errors.New("foo")
+			time.Sleep(time.Millisecond)
+			return nil, nil
 		}
 		result := await.Func(context.Background(), retryInterval, poll)
 		assert.NoError(t, result.Err)
-		assert.Equal(t, 3, calls)
 	})
 
 	t.Run("cancel", func(t *testing.T) {
@@ -65,13 +60,9 @@ func TestPollAll(t *testing.T) {
 	t.Run("noerror", func(t *testing.T) {
 		t.Log("PollAll should return because all poll functions complete successfully")
 		retryInterval := time.Nanosecond
-		var calls int
 		poll := func(ctx context.Context) (interface{}, error) {
-			if calls >= 3 {
-				return nil, nil
-			}
-			calls++
-			return nil, errors.New("foo")
+			time.Sleep(time.Millisecond)
+			return nil, nil
 		}
 		polls := map[string]await.PollFunc{"poll1": poll, "poll2": poll}
 		results := await.All(context.Background(), retryInterval, polls)
@@ -116,7 +107,7 @@ func TestPollAll(t *testing.T) {
 		polls := map[string]await.PollFunc{"poll1": poll1, "poll2": poll2}
 		results := await.All(ctx, time.Second, polls)
 		assert.Len(t, results, 2)
-		assert.Nil(t, results["poll1"].Err)
+		assert.NoError(t, results["poll1"].Err)
 		if assert.Error(t, results["poll2"].Err) {
 			assert.IsType(t, &await.Error{}, results["poll2"].Err)
 			var err *await.Error
@@ -143,8 +134,9 @@ func TestPollFirst(t *testing.T) {
 		}
 		polls := map[string]await.PollFunc{"poll5": poll5, "poll8": poll8, "poll12": poll12}
 		result := await.First(context.Background(), time.Millisecond, polls)
-		assert.Nil(t, result.Err)
-		assert.Equal(t, result.Value.(string), "5 Milliseconds")
+		if assert.NoError(t, result.Err) {
+			assert.Equal(t, result.Value.(string), "5 Milliseconds")
+		}
 	})
 
 	t.Run("waitsuccess", func(t *testing.T) {
@@ -163,8 +155,9 @@ func TestPollFirst(t *testing.T) {
 		}
 		polls := map[string]await.PollFunc{"poll5": poll5, "poll8": poll8, "poll12": poll12}
 		result := await.First(context.Background(), time.Millisecond, polls)
-		assert.Nil(t, result.Err)
-		assert.Equal(t, result.Value.(string), "8 Milliseconds")
+		if assert.NoError(t, result.Err) {
+			assert.Equal(t, result.Value.(string), "8 Milliseconds")
+		}
 	})
 
 	t.Run("cancel", func(t *testing.T) {
@@ -187,41 +180,78 @@ func TestPollFirst(t *testing.T) {
 			return "12 Milliseconds", nil
 		}
 		polls := map[string]await.PollFunc{"poll5": poll5, "poll8": poll8, "poll12": poll12}
-		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+		result := await.First(context.Background(), time.Millisecond, polls)
+		if assert.NoError(t, result.Err) {
+			assert.Equal(t, result.Value.(string), "5 Milliseconds")
+			assert.Equal(t, <-ch, "8 Milliseconds cancelled")
+			assert.Equal(t, <-ch, "12 Milliseconds cancelled")
+		}
+	})
+
+	t.Run("timeout", func(t *testing.T) {
+		t.Log("PollFirst should return the result from the first successful function.")
+
+		poll1 := func(ctx context.Context) (interface{}, error) {
+			return nil, fmt.Errorf("error message")
+		}
+		poll2 := func(ctx context.Context) (interface{}, error) {
+			return nil, fmt.Errorf("error message")
+		}
+		polls := map[string]await.PollFunc{"poll1": poll1, "poll2": poll2}
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Millisecond)
 		defer cancel()
 		result := await.First(ctx, time.Millisecond, polls)
-		assert.Nil(t, result.Err)
-		assert.Equal(t, result.Value.(string), "5 Milliseconds")
-		assert.Equal(t, <-ch, "8 Milliseconds cancelled")
-		assert.Equal(t, <-ch, "12 Milliseconds cancelled")
+		if assert.Error(t, result.Err) {
+			assert.Regexp(t, "context cancelled after .+", result.Err.Error())
+		}
 	})
 }
 
-func ExamplePoll() {
+func ExampleFunc() {
+	t := time.NewTimer(time.Millisecond)
 	poll := func(ctx context.Context) (interface{}, error) {
-		return nil, errors.New("poll fail")
+		select {
+		case <-t.C:
+			return "timer finished", nil
+		default:
+			return nil, errors.New("poll fail")
+		}
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Millisecond)
 	defer cancel()
-	result := await.Func(ctx, 2*time.Millisecond, poll)
-	fmt.Println(result)
+	result := await.Func(ctx, 200*time.Microsecond, poll)
+	fmt.Println("Result:", result.Value)
+
+	// Output:
+	// Result: timer finished
 }
 
-func ExamplePollAll() {
+func ExampleAll() {
 	poll1 := func(ctx context.Context) (interface{}, error) {
-		return nil, errors.New("poll1 fail")
+		return nil, errors.New("error message")
 	}
 	poll2 := func(ctx context.Context) (interface{}, error) {
-		return nil, errors.New("poll1 fail")
+		return "ok", nil
 	}
 	polls := map[string]await.PollFunc{"poll1": poll1, "poll2": poll2}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
 	defer cancel()
 	results := await.All(ctx, 2*time.Millisecond, polls)
-	fmt.Println(results)
+	for name, result := range results {
+		switch {
+		case result.Err != nil:
+			fmt.Println(name, "timed out")
+		default:
+			fmt.Println(name, "returned value:", result.Value)
+		}
+	}
+
+	// Unordered output:
+	// poll1 timed out
+	// poll2 returned value: ok
 }
 
-func ExamplePollFirst() {
+func ExampleFirst() {
 	retryInterval := time.Nanosecond
 	faster := func(ctx context.Context) (interface{}, error) {
 		time.Sleep(time.Microsecond)
@@ -238,8 +268,8 @@ func ExamplePollFirst() {
 	if result.Err != nil {
 		log.Fatal(result.Err)
 	}
-	fmt.Printf("first result: %v\n", result.Value)
+	fmt.Println("First returned value:", result.Value)
 
 	// Output:
-	// first result: I'm fast
+	// First returned value: I'm fast
 }
