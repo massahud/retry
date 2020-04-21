@@ -8,14 +8,14 @@ import (
 	"time"
 )
 
+// PollFunc is a polling function that returns no error when succeeds
+type PollFunc func(ctx context.Context) (interface{}, error)
+
 // Result is what is returned from the api for any poll function call.
 type Result struct {
 	Value interface{}
 	Err   error
 }
-
-// PollFunc is a polling function that returns no error when succeeds
-type PollFunc func(ctx context.Context) (interface{}, error)
 
 // Error informs that a cancellation took place before the poll
 // function returned successfully.
@@ -40,12 +40,12 @@ func (err *Error) Unwrap() error {
 
 // Func calls the poll function every retry interval until the poll
 // function succeeds or the context times out.
-func Func(ctx context.Context, retryInterval time.Duration, poll PollFunc) Result {
+func Func(ctx context.Context, retryInterval time.Duration, pollFn PollFunc) Result {
 	var retry *time.Timer
 	start := time.Now()
 
 	for {
-		value, err := poll(ctx)
+		value, err := pollFn(ctx)
 		if err == nil {
 			return Result{Value: value}
 		}
@@ -68,60 +68,61 @@ func Func(ctx context.Context, retryInterval time.Duration, poll PollFunc) Resul
 	}
 }
 
+type namedResult struct {
+	name string
+	Result
+}
+
+// pollMap calls the map of poll functions every retry interval until the poll
+// function succeeds or the context times out. As poll functions complete, their
+// results are signaled over the channel for processing.
+func pollMap(ctx context.Context, retry time.Duration, pollFns map[string]PollFunc) <-chan namedResult {
+	g := len(pollFns)
+	results := make(chan namedResult, g)
+
+	go func() {
+		var wg sync.WaitGroup
+		wg.Add(g)
+		for name, pollFn := range pollFns {
+			name, pollFn := name, pollFn
+			go func() {
+				defer wg.Done()
+				result := Func(ctx, retry, pollFn)
+				results <- namedResult{name: name, Result: result}
+			}()
+		}
+		wg.Wait()
+		close(results)
+	}()
+
+	return results
+}
+
 // All calls all the poll functions every retry interval until the poll
 // functions succeeds or the context times out.
-func All(ctx context.Context, retryTime time.Duration, polls map[string]PollFunc) map[string]Result {
-	g := len(polls)
-	var wg sync.WaitGroup
-	wg.Add(g)
-
+func All(ctx context.Context, retryTime time.Duration, pollFns map[string]PollFunc) map[string]Result {
 	results := make(map[string]Result)
-	var mu sync.Mutex
-
-	for name, poll := range polls {
-		name, poll := name, poll
-		go func() {
-			defer wg.Done()
-			mu.Lock()
-			{
-				results[name] = Func(ctx, retryTime, poll)
-			}
-			mu.Unlock()
-		}()
+	for result := range pollMap(ctx, retryTime, pollFns) {
+		results[result.name] = result.Result
 	}
-
-	wg.Wait()
 
 	return results
 }
 
 // First calls all the poll functions every retry interval until the poll
 // functions succeeds or the context times out. Once the first polling function
-// the succeeds returns, this function will return that result.
-func First(ctx context.Context, retryTime time.Duration, polls map[string]PollFunc) Result {
+// succeeds, this function will return that result.
+func First(ctx context.Context, retryTime time.Duration, pollFns map[string]PollFunc) Result {
 	start := time.Now()
-	g := len(polls)
-	results := make(chan Result, g)
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	for _, poll := range polls {
-		poll := poll
-		go func() {
-			results <- Func(ctx, retryTime, poll)
-		}()
-	}
-
-	for i := 0; i < g; i++ {
-		select {
-		case <-ctx.Done():
-			return Result{Err: &Error{since: time.Since(start)}}
-		case result := <-results:
-			if result.Err == nil {
-				return result
-			}
+	for result := range pollMap(ctx, retryTime, pollFns) {
+		if result.Result.Err != nil {
+			continue
 		}
+		return result.Result
 	}
 
 	return Result{Err: &Error{errPoll: errors.New("all poll functions failed"), since: time.Since(start)}}

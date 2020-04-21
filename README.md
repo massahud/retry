@@ -1,14 +1,11 @@
-![Go](https://github.com/massahud/goawait/workflows/Go/badge.svg)
+![Go](https://github.com/massahud/await/workflows/Go/badge.svg)
 
-GoAwait
+Await
 =======
 
-Package goawait is a simple module for asynchronous waiting. Use goawait when
+Package await is a simple module for asynchronous waiting. Use await when
 you need to wait for asynchronous tasks to complete before continuing normal
 execution.
-
-GoAwait has functions that take a polling function and execute
-that function until it succeeds or the specified timeout is exceeded.
 
 Example with polling function that returns an error:
 ```go
@@ -59,4 +56,4 @@ Example polling until the first function returns:
 	fmt.Prinln("First result:", result.Value)
 ```
 
-[GoDoc](https://pkg.go.dev/github.com/massahud/goawait?tab=doc)
+[GoDoc](https://pkg.go.dev/github.com/massahud/await?tab=doc)
