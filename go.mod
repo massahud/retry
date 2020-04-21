@@ -1,4 +1,4 @@
-module github.com/massahud/goawait
+module github.com/massahud/await
 
 go 1.14
 
