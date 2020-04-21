@@ -38,34 +38,64 @@ func (err *Error) Unwrap() error {
 	return err.errPoll
 }
 
-// Poll calls the poll function every retry interval until the poll
-// function succeeds or the context times out.
-func Poll(ctx context.Context, retryInterval time.Duration, poll PollFunc) Result {
-	var retry *time.Timer
+type namedResult struct {
+	name string
+	Result
+}
+
+func poll(ctx context.Context, retry time.Duration, name string, poll PollFunc) namedResult {
+	var timer *time.Timer
 	start := time.Now()
 
 	for {
 		value, err := poll(ctx)
 		if err == nil {
-			return Result{Value: value}
+			return namedResult{name: name, Result: Result{Value: value}}
 		}
 
 		if ctx.Err() != nil {
-			return Result{Err: &Error{errPoll: err, since: time.Since(start)}}
+			return namedResult{name: name, Result: Result{Err: &Error{errPoll: err, since: time.Since(start)}}}
 		}
 
-		if retry == nil {
-			retry = time.NewTimer(retryInterval)
+		if timer == nil {
+			timer = time.NewTimer(retry)
 		}
 
 		select {
 		case <-ctx.Done():
-			retry.Stop()
-			return Result{Err: &Error{errPoll: err, since: time.Since(start)}}
-		case <-retry.C:
-			retry.Reset(retryInterval)
+			timer.Stop()
+			return namedResult{name: name, Result: Result{Err: &Error{errPoll: err, since: time.Since(start)}}}
+		case <-timer.C:
+			timer.Reset(retry)
 		}
 	}
+}
+
+func pollMap(ctx context.Context, retry time.Duration, pollers map[string]PollFunc) <-chan namedResult {
+	rc := make(chan namedResult, len(pollers))
+
+	go func() {
+		wg := sync.WaitGroup{}
+
+		wg.Add(len(pollers))
+
+		for n, f := range pollers {
+			n, f := n, f
+			go func() { rc <- poll(ctx, retry, n, f); wg.Done() }()
+		}
+
+		wg.Wait()
+		close(rc)
+	}()
+
+	return rc
+}
+
+// Poll calls the poll function every retry interval until the poll
+// function succeeds or the context times out.
+func Poll(ctx context.Context, retryInterval time.Duration, pf PollFunc) Result {
+	res := poll(ctx, retryInterval, "", pf)
+	return res.Result
 }
 
 // PollAll calls all the poll functions every retry interval until the poll
