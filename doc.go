@@ -22,7 +22,7 @@ Example simultaneously polling multiple functions:
 	poll2 := func(ctx context.Context) (interface{}, error) {
 		return nil, fmt.Error("poll2 error")
 	}
-	polls := map[string]goawait.PollFunc{"poll1": poll1, "poll2": poll2}
+	polls := map[string]await.PollFunc{"poll1": poll1, "poll2": poll2}
 	results := await.All(ctx, 200*time.Microsecond, polls)
 	for name, result := range results {
 		fmt.Println("Name:", name, "result:", result)
@@ -37,7 +37,7 @@ Example polling until the first function returns:
 		time.Sleep(time.Millisecond)
 		return "I'm slow", nil
 	}
-	polls := map[string]goawait.PollFunc{"faster": faster, "slower": slower}
+	polls := map[string]await.PollFunc{"faster": faster, "slower": slower}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	result := await.First(ctx, time.Millisecond, polls)
