@@ -17,7 +17,7 @@ Example with polling function that returns an error:
 	poll := func(ctx context.Context) (interface{}, error) {
 		return nil, errors.New("error message")
 	}
-	if result != goawait.Poll(ctx, 500*time.Microsecond, poll); result.Err != nil {
+	if result != await.Func(ctx, 500*time.Microsecond, poll); result.Err != nil {
 		return result.Err
 	}
 ```
@@ -33,7 +33,7 @@ Example simultaneously polling multiple functions:
 		return nil, fmt.Error("error message")
 	}
 	polls := map[string]goawait.PollFunc{"poll1": poll1, "poll2": poll2}
-	results := goawait.PollAll(ctx, 200*time.Microsecond, polls)
+	results := await.All(ctx, 200*time.Microsecond, polls)
 	for name, result := range results {
 		fmt.Println("Name:", name, "result:", result)
 	}
@@ -52,7 +52,7 @@ Example polling until the first function returns:
 	polls := map[string]goawait.PollFunc{"faster": faster, "slower": slower}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	result := goawait.PollFirst(ctx, time.Millisecond, polls)
+	result := await.First(ctx, time.Millisecond, polls)
 	if result.Err != nil {
 		log.Fatal(result.Err)
 	}
