@@ -116,7 +116,7 @@ func TestPollAll(t *testing.T) {
 		polls := map[string]goawait.PollFunc{"poll1": poll1, "poll2": poll2}
 		results := goawait.PollAll(ctx, time.Second, polls)
 		assert.Len(t, results, 2)
-		assert.Nil(t, results["poll1"].Err)
+		assert.NoError(t, results["poll1"].Err)
 		if assert.Error(t, results["poll2"].Err) {
 			assert.IsType(t, &goawait.Error{}, results["poll2"].Err)
 			var err *goawait.Error
@@ -143,8 +143,9 @@ func TestPollFirst(t *testing.T) {
 		}
 		polls := map[string]goawait.PollFunc{"poll5": poll5, "poll8": poll8, "poll12": poll12}
 		result := goawait.PollFirst(context.Background(), time.Millisecond, polls)
-		assert.Nil(t, result.Err)
-		assert.Equal(t, result.Value.(string), "5 Milliseconds")
+		if assert.NoError(t, result.Err) {
+			assert.Equal(t, result.Value.(string), "5 Milliseconds")
+		}
 	})
 
 	t.Run("waitsuccess", func(t *testing.T) {
@@ -163,8 +164,9 @@ func TestPollFirst(t *testing.T) {
 		}
 		polls := map[string]goawait.PollFunc{"poll5": poll5, "poll8": poll8, "poll12": poll12}
 		result := goawait.PollFirst(context.Background(), time.Millisecond, polls)
-		assert.Nil(t, result.Err)
-		assert.Equal(t, result.Value.(string), "8 Milliseconds")
+		if assert.NoError(t, result.Err) {
+			assert.Equal(t, result.Value.(string), "8 Milliseconds")
+		}
 	})
 
 	t.Run("cancel", func(t *testing.T) {
@@ -188,35 +190,74 @@ func TestPollFirst(t *testing.T) {
 		}
 		polls := map[string]goawait.PollFunc{"poll5": poll5, "poll8": poll8, "poll12": poll12}
 		result := goawait.PollFirst(context.Background(), time.Millisecond, polls)
-		assert.Nil(t, result.Err)
-		assert.Equal(t, result.Value.(string), "5 Milliseconds")
-		assert.Equal(t, <-ch, "8 Milliseconds cancelled")
-		assert.Equal(t, <-ch, "12 Milliseconds cancelled")
+		if assert.NoError(t, result.Err) {
+			assert.Equal(t, result.Value.(string), "5 Milliseconds")
+			assert.Equal(t, <-ch, "8 Milliseconds cancelled")
+			assert.Equal(t, <-ch, "12 Milliseconds cancelled")
+		}
+	})
+
+	t.Run("timeout", func(t *testing.T) {
+		t.Log("PollFirst should return the result from the first successful function.")
+
+		poll1 := func(ctx context.Context) (interface{}, error) {
+			return nil, fmt.Errorf("error message")
+		}
+		poll2 := func(ctx context.Context) (interface{}, error) {
+			return nil, fmt.Errorf("error message")
+		}
+		polls := map[string]goawait.PollFunc{"poll1": poll1, "poll2": poll2}
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Millisecond)
+		defer cancel()
+		result := goawait.PollFirst(ctx, time.Millisecond, polls)
+		if assert.Error(t, result.Err) {
+			assert.Regexp(t, "context cancelled after .+", result.Err.Error())
+		}
 	})
 }
 
 func ExamplePoll() {
+	t := time.NewTimer(time.Millisecond)
 	poll := func(ctx context.Context) (interface{}, error) {
-		return nil, errors.New("poll fail")
+		select {
+		case <-t.C:
+			return "timer finished", nil
+		default:
+			return nil, errors.New("poll fail")
+		}
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Millisecond)
 	defer cancel()
-	result := goawait.Poll(ctx, 2*time.Millisecond, poll)
-	fmt.Println(result)
+	result := goawait.Poll(ctx, 200*time.Microsecond, poll)
+	fmt.Println("Result:", result.Value)
+
+	// Output:
+	// Result: timer finished
 }
 
 func ExamplePollAll() {
 	poll1 := func(ctx context.Context) (interface{}, error) {
-		return nil, errors.New("poll1 fail")
+		return nil, errors.New("error message")
 	}
 	poll2 := func(ctx context.Context) (interface{}, error) {
-		return nil, errors.New("poll1 fail")
+		return "ok", nil
 	}
 	polls := map[string]goawait.PollFunc{"poll1": poll1, "poll2": poll2}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
 	defer cancel()
 	results := goawait.PollAll(ctx, 2*time.Millisecond, polls)
-	fmt.Println(results)
+	for name, result := range results {
+		switch {
+		case result.Err != nil:
+			fmt.Println(name, "timed out")
+		default:
+			fmt.Println(name, "returned value:", result.Value)
+		}
+	}
+
+	// Unordered output:
+	// poll1 timed out
+	// poll2 returned value: ok
 }
 
 func ExamplePollFirst() {
@@ -236,8 +277,8 @@ func ExamplePollFirst() {
 	if result.Err != nil {
 		log.Fatal(result.Err)
 	}
-	fmt.Printf("first result: %v\n", result.Value)
+	fmt.Println("First returned value:", result.Value)
 
 	// Output:
-	// first result: I'm fast
+	// First returned value: I'm fast
 }

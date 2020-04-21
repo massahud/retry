@@ -15,7 +15,7 @@ Example with polling function that returns an error:
 	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
 	defer cancel()
 	poll := func(ctx context.Context) (interface{}, error) {
-			return nil, errors.New("error message")
+		return nil, errors.New("error message")
 	}
 	if result != goawait.Poll(ctx, 500*time.Microsecond, poll); result.Err != nil {
 		return result.Err
@@ -27,16 +27,36 @@ Example simultaneously polling multiple functions:
 	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
 	defer cancel()
 	poll1 := func(ctx context.Context) (interface{}, error) {
-			return nil, nil
+		return "ok", nil
 	}
 	poll2 := func(ctx context.Context) (interface{}, error) {
-			return nil, errors.New("error message")
+		return nil, fmt.Error("error message")
 	}
 	polls := map[string]goawait.PollFunc{"poll1": poll1, "poll2": poll2}
-	results := goawait.PollAll(ctx, 500*time.Microsecond, polls)
+	results := goawait.PollAll(ctx, 200*time.Microsecond, polls)
 	for name, result := range results {
 		fmt.Println("Name:", name, "result:", result)
 	}
+```
+
+Example polling until the first function returns:
+```go
+	faster := func(ctx context.Context) (interface{}, error) {
+		time.Sleep(time.Microsecond)
+		return "I'm fast", nil
+	}
+	slower := func(ctx context.Context) (interface{}, error) {
+		time.Sleep(time.Millisecond)
+		return "I'm slow", nil
+	}
+	polls := map[string]goawait.PollFunc{"faster": faster, "slower": slower}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	result := goawait.PollFirst(ctx, time.Millisecond, polls)
+	if result.Err != nil {
+		log.Fatal(result.Err)
+	}
+	fmt.Prinln("First result:", result.Value)
 ```
 
 [GoDoc](https://pkg.go.dev/github.com/massahud/goawait?tab=doc)
