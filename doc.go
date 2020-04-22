@@ -3,32 +3,32 @@ Package await is a simple module for asynchronous waiting. Use await when
 you need to wait for asynchronous tasks to complete before continuing normal
 execution.
 
-Example with polling function that returns an error:
+Example with worker function that returns an error:
 	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
 	defer cancel()
-	poll := func(ctx context.Context) (interface{}, error) {
-		return nil, errors.New("poll error")
+	worker := func(ctx context.Context) (interface{}, error) {
+		return nil, errors.New("worker error")
 	}
-	if result != await.Func(ctx, 500*time.Microsecond, poll); result.Err != nil {
+	if result != await.Func(ctx, 500*time.Microsecond, worker); result.Err != nil {
 		return result.Err
 	}
 
-Example simultaneously polling multiple functions:
+Example with multiple worker functions running in parallel:
 	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
 	defer cancel()
-	poll1 := func(ctx context.Context) (interface{}, error) {
-		return "poll1 return", nil
+	worker1 := func(ctx context.Context) (interface{}, error) {
+		return "worker1 return", nil
 	}
-	poll2 := func(ctx context.Context) (interface{}, error) {
-		return nil, fmt.Error("poll2 error")
+	worker2 := func(ctx context.Context) (interface{}, error) {
+		return nil, fmt.Error("worker2 error")
 	}
-	polls := map[string]await.PollFunc{"poll1": poll1, "poll2": poll2}
-	results := await.All(ctx, 200*time.Microsecond, polls)
+	workers := map[string]goawait.Worker{"worker2": worker1, "worker2": worker2}
+	results := await.All(ctx, 200*time.Microsecond, workers)
 	for name, result := range results {
 		fmt.Println("Name:", name, "result:", result)
 	}
 
-Example polling until the first function returns:
+Example with multiple worker functions running in parallel waiting for first to return:
 	faster := func(ctx context.Context) (interface{}, error) {
 		time.Sleep(time.Microsecond)
 		return "I'm fast", nil
@@ -37,10 +37,10 @@ Example polling until the first function returns:
 		time.Sleep(time.Millisecond)
 		return "I'm slow", nil
 	}
-	polls := map[string]await.PollFunc{"faster": faster, "slower": slower}
+	workers := map[string]goawait.Worker{"faster": faster, "slower": slower}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	result := await.First(ctx, time.Millisecond, polls)
+	result := await.First(ctx, time.Millisecond, workers)
 	if result.Err != nil {
 		log.Fatal(result.Err)
 	}
