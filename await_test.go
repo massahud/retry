@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	await "github.com/massahud/await"
+	"github.com/massahud/await"
 	"github.com/stretchr/testify/assert"
 )
 
