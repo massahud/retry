@@ -1,4 +1,4 @@
-package await
+package retry
 
 import (
 	"context"

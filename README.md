@@ -1,11 +1,11 @@
-![Go](https://github.com/massahud/await/workflows/Go/badge.svg)
+![Go](https://github.com/massahud/retry/workflows/Go/badge.svg)
 
-Await
+Retry
 =======
 
-Package await is a simple module for asynchronous waiting. Use await when
-you need to wait for asynchronous tasks to complete before continuing normal
-execution.
+Package retry is a simple module for retrying a function on a defined interval
+until the function succeeds or timeouts. There is support for retrying a
+group of functions at different concurrency levels.
 
 Example with worker function that returns an error:
 ```go
@@ -14,7 +14,7 @@ Example with worker function that returns an error:
 	worker := func(ctx context.Context) (interface{}, error) {
 		return nil, errors.New("worker error")
 	}
-	if result != await.Func(ctx, 500*time.Microsecond, worker); result.Err != nil {
+	if result != retry.Func(ctx, 500*time.Microsecond, worker); result.Err != nil {
 		return result.Err
 	}
 ```
@@ -29,8 +29,8 @@ Example with multiple worker functions running in parallel:
 	worker2 := func(ctx context.Context) (interface{}, error) {
 		return nil, fmt.Error("worker2 error")
 	}
-	workers := map[string]goawait.Worker{"worker2": worker1, "worker2": worker2}
-	results := await.All(ctx, 200*time.Microsecond, workers, 0)
+	workers := map[string]retry.Worker{"worker2": worker1, "worker2": worker2}
+	results := retry.All(ctx, 200*time.Microsecond, workers, 0)
 	for name, result := range results {
 		fmt.Println("Name:", name, "result:", result)
 	}
@@ -46,14 +46,14 @@ Example with multiple worker functions running in parallel waiting for first to 
 		time.Sleep(time.Millisecond)
 		return "I'm slow", nil
 	}
-	workers := map[string]goawait.Worker{"faster": faster, "slower": slower}
+	workers := map[string]retry.Worker{"faster": faster, "slower": slower}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	result := await.First(ctx, time.Millisecond, workers, 0)
+	result := retry.First(ctx, time.Millisecond, workers, 0)
 	if result.Err != nil {
 		log.Fatal(result.Err)
 	}
 	fmt.Prinln("first result:", result.Value)
 ```
 
-[GoDoc](https://pkg.go.dev/github.com/massahud/await?tab=doc)
+[GoDoc](https://pkg.go.dev/github.com/massahud/retry?tab=doc)

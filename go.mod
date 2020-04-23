@@ -1,4 +1,4 @@
-module github.com/massahud/await
+module github.com/massahud/retry
 
 go 1.14
 
