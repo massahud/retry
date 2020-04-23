@@ -14,7 +14,7 @@ All of the documentation can be found on the [go.dev](https://pkg.go.dev/github.
 ## Licensing
 
 ```
-Copyright 2020, Geraldo Massahud
+Copyright 2020, Geraldo Augusto Massahud Rodrigues dos Santos
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
