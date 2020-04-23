@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -12,7 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestWork(t *testing.T) {
+func TestFunc(t *testing.T) {
 	t.Run("noerror", func(t *testing.T) {
 		t.Log("Func should return because the worker function completes successfully.")
 		retryInterval := time.Nanosecond
@@ -29,6 +30,25 @@ func TestWork(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		err := fmt.Errorf("foo")
+		var counter int32
+		worker := func(ctx context.Context) (interface{}, error) {
+			if atomic.AddInt32(&counter, 1) > 10 {
+				cancel()
+			}
+			return nil, err
+		}
+		result := await.Func(ctx, time.Millisecond, worker)
+		if assert.Error(t, result.Err) {
+			assert.IsType(t, &await.Error{}, result.Err)
+			assert.Equal(t, err, errors.Unwrap(result.Err))
+		}
+	})
+
+	t.Run("failfast", func(t *testing.T) {
+		t.Log("Func should return error if context is closed before execution.")
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		err := fmt.Errorf("foo")
 		worker := func(ctx context.Context) (interface{}, error) {
 			cancel()
 			return nil, err
@@ -36,7 +56,7 @@ func TestWork(t *testing.T) {
 		result := await.Func(ctx, time.Second, worker)
 		if assert.Error(t, result.Err) {
 			assert.IsType(t, &await.Error{}, result.Err)
-			assert.Equal(t, err, errors.Unwrap(result.Err))
+			assert.Equal(t, nil, errors.Unwrap(result.Err))
 		}
 	})
 
@@ -76,12 +96,15 @@ func TestAll(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		errWork := fmt.Errorf("foo")
+		var counter int32
 		worker := func(ctx context.Context) (interface{}, error) {
-			cancel()
+			if atomic.AddInt32(&counter, 1) > 10 {
+				cancel()
+			}
 			return nil, errWork
 		}
 		workers := map[string]await.Worker{"worker1": worker, "worker2": worker}
-		results := await.All(ctx, time.Second, workers, 0)
+		results := await.All(ctx, time.Millisecond, workers, 0)
 		assert.Len(t, results, 2)
 		for _, result := range results {
 			if assert.Error(t, result.Err) {
@@ -91,7 +114,7 @@ func TestAll(t *testing.T) {
 			}
 		}
 		assert.Equal(t, errWork, errors.Unwrap(results["worker1"].Err))
-		assert.Equal(t, nil, errors.Unwrap(results["worker2"].Err))
+		assert.Equal(t, errWork, errors.Unwrap(results["worker2"].Err))
 	})
 
 	t.Run("timeout", func(t *testing.T) {
@@ -106,7 +129,7 @@ func TestAll(t *testing.T) {
 			return nil, errWork
 		}
 		workers := map[string]await.Worker{"worker1": worker1, "worker2": worker2}
-		results := await.All(ctx, time.Second, workers, 0)
+		results := await.All(ctx, time.Millisecond, workers, 0)
 		assert.Len(t, results, 2)
 		assert.NoError(t, results["worker1"].Err)
 		if assert.Error(t, results["worker2"].Err) {
@@ -227,12 +250,15 @@ func TestAllWithPooling(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		errWork := fmt.Errorf("foo")
+		var count int32
 		worker := func(ctx context.Context) (interface{}, error) {
-			cancel()
+			if atomic.AddInt32(&count, 1) > 10 {
+				cancel()
+			}
 			return nil, errWork
 		}
 		workers := map[string]await.Worker{"worker1": worker, "worker2": worker}
-		results := await.All(ctx, time.Second, workers, 16)
+		results := await.All(ctx, time.Millisecond, workers, 16)
 		assert.Len(t, results, 2)
 		for _, result := range results {
 			if assert.Error(t, result.Err) {
@@ -242,7 +268,7 @@ func TestAllWithPooling(t *testing.T) {
 			}
 		}
 		assert.Equal(t, errWork, errors.Unwrap(results["worker1"].Err))
-		assert.Equal(t, nil, errors.Unwrap(results["worker2"].Err))
+		assert.Equal(t, errWork, errors.Unwrap(results["worker2"].Err))
 	})
 
 	t.Run("timeout", func(t *testing.T) {
@@ -257,7 +283,7 @@ func TestAllWithPooling(t *testing.T) {
 			return nil, errWork
 		}
 		workers := map[string]await.Worker{"worker1": worker1, "worker2": worker2}
-		results := await.All(ctx, time.Second, workers, 16)
+		results := await.All(ctx, time.Millisecond, workers, 16)
 		assert.Len(t, results, 2)
 		assert.NoError(t, results["worker1"].Err)
 		if assert.Error(t, results["worker2"].Err) {
