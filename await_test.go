@@ -1,4 +1,4 @@
-package await_test
+package retry_test
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/massahud/await"
+	"github.com/massahud/retry"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -21,7 +21,7 @@ func TestFunc(t *testing.T) {
 			time.Sleep(time.Millisecond)
 			return nil, nil
 		}
-		result := await.Func(context.Background(), retryInterval, worker)
+		result := retry.Func(context.Background(), retryInterval, worker)
 		assert.NoError(t, result.Err)
 	})
 
@@ -37,9 +37,9 @@ func TestFunc(t *testing.T) {
 			}
 			return nil, err
 		}
-		result := await.Func(ctx, time.Millisecond, worker)
+		result := retry.Func(ctx, time.Millisecond, worker)
 		if assert.Error(t, result.Err) {
-			assert.IsType(t, &await.Error{}, result.Err)
+			assert.IsType(t, &retry.Error{}, result.Err)
 			assert.Equal(t, err, errors.Unwrap(result.Err))
 		}
 	})
@@ -53,9 +53,9 @@ func TestFunc(t *testing.T) {
 			cancel()
 			return nil, err
 		}
-		result := await.Func(ctx, time.Second, worker)
+		result := retry.Func(ctx, time.Second, worker)
 		if assert.Error(t, result.Err) {
-			assert.IsType(t, &await.Error{}, result.Err)
+			assert.IsType(t, &retry.Error{}, result.Err)
 			assert.Equal(t, nil, errors.Unwrap(result.Err))
 		}
 	})
@@ -68,9 +68,9 @@ func TestFunc(t *testing.T) {
 		worker := func(ctx context.Context) (interface{}, error) {
 			return nil, err
 		}
-		result := await.Func(ctx, time.Second, worker)
+		result := retry.Func(ctx, time.Second, worker)
 		if assert.Error(t, result.Err) {
-			assert.IsType(t, &await.Error{}, result.Err)
+			assert.IsType(t, &retry.Error{}, result.Err)
 			assert.Equal(t, err, errors.Unwrap(result.Err))
 		}
 	})
@@ -84,8 +84,8 @@ func TestAll(t *testing.T) {
 			time.Sleep(time.Millisecond)
 			return nil, nil
 		}
-		workers := map[string]await.Worker{"worker1": worker, "worker2": worker}
-		results := await.All(context.Background(), retryInterval, workers, 0)
+		workers := map[string]retry.Worker{"worker1": worker, "worker2": worker}
+		results := retry.All(context.Background(), retryInterval, workers, 0)
 		for _, result := range results {
 			assert.NoError(t, result.Err)
 		}
@@ -103,13 +103,13 @@ func TestAll(t *testing.T) {
 			}
 			return nil, errWork
 		}
-		workers := map[string]await.Worker{"worker1": worker, "worker2": worker}
-		results := await.All(ctx, time.Millisecond, workers, 0)
+		workers := map[string]retry.Worker{"worker1": worker, "worker2": worker}
+		results := retry.All(ctx, time.Millisecond, workers, 0)
 		assert.Len(t, results, 2)
 		for _, result := range results {
 			if assert.Error(t, result.Err) {
-				assert.IsType(t, &await.Error{}, result.Err)
-				var err *await.Error
+				assert.IsType(t, &retry.Error{}, result.Err)
+				var err *retry.Error
 				assert.True(t, errors.As(result.Err, &err))
 			}
 		}
@@ -128,13 +128,13 @@ func TestAll(t *testing.T) {
 		worker2 := func(ctx context.Context) (interface{}, error) {
 			return nil, errWork
 		}
-		workers := map[string]await.Worker{"worker1": worker1, "worker2": worker2}
-		results := await.All(ctx, time.Millisecond, workers, 0)
+		workers := map[string]retry.Worker{"worker1": worker1, "worker2": worker2}
+		results := retry.All(ctx, time.Millisecond, workers, 0)
 		assert.Len(t, results, 2)
 		assert.NoError(t, results["worker1"].Err)
 		if assert.Error(t, results["worker2"].Err) {
-			assert.IsType(t, &await.Error{}, results["worker2"].Err)
-			var err *await.Error
+			assert.IsType(t, &retry.Error{}, results["worker2"].Err)
+			var err *retry.Error
 			assert.True(t, errors.As(results["worker2"].Err, &err))
 			assert.Equal(t, errWork, errors.Unwrap(results["worker2"].Err))
 		}
@@ -156,8 +156,8 @@ func TestFirst(t *testing.T) {
 			time.Sleep(12 * time.Millisecond)
 			return "12 Milliseconds", nil
 		}
-		workers := map[string]await.Worker{"worker5": worker5, "worker8": worker8, "worker12": worker12}
-		result := await.First(context.Background(), time.Millisecond, workers, 0)
+		workers := map[string]retry.Worker{"worker5": worker5, "worker8": worker8, "worker12": worker12}
+		result := retry.First(context.Background(), time.Millisecond, workers, 0)
 		if assert.NoError(t, result.Err) {
 			assert.Equal(t, result.Value.(string), "5 Milliseconds")
 		}
@@ -177,8 +177,8 @@ func TestFirst(t *testing.T) {
 			time.Sleep(12 * time.Millisecond)
 			return "12 Milliseconds", nil
 		}
-		workers := map[string]await.Worker{"worker5": worker5, "worker8": worker8, "worker12": worker12}
-		result := await.First(context.Background(), time.Millisecond, workers, 0)
+		workers := map[string]retry.Worker{"worker5": worker5, "worker8": worker8, "worker12": worker12}
+		result := retry.First(context.Background(), time.Millisecond, workers, 0)
 		if assert.NoError(t, result.Err) {
 			assert.Equal(t, result.Value.(string), "8 Milliseconds")
 		}
@@ -203,8 +203,8 @@ func TestFirst(t *testing.T) {
 			ch <- "12 Milliseconds cancelled"
 			return "12 Milliseconds", nil
 		}
-		workers := map[string]await.Worker{"worker5": worker5, "worker8": worker8, "worker12": worker12}
-		result := await.First(context.Background(), time.Millisecond, workers, 0)
+		workers := map[string]retry.Worker{"worker5": worker5, "worker8": worker8, "worker12": worker12}
+		result := retry.First(context.Background(), time.Millisecond, workers, 0)
 		if assert.NoError(t, result.Err) {
 			assert.Equal(t, result.Value.(string), "5 Milliseconds")
 			assert.Equal(t, <-ch, "8 Milliseconds cancelled")
@@ -220,10 +220,10 @@ func TestFirst(t *testing.T) {
 		worker2 := func(ctx context.Context) (interface{}, error) {
 			return nil, fmt.Errorf("error message")
 		}
-		workers := map[string]await.Worker{"worker1": worker1, "worker2": worker2}
+		workers := map[string]retry.Worker{"worker1": worker1, "worker2": worker2}
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Millisecond)
 		defer cancel()
-		result := await.First(ctx, time.Millisecond, workers, 0)
+		result := retry.First(ctx, time.Millisecond, workers, 0)
 		if assert.Error(t, result.Err) {
 			assert.Regexp(t, "context cancelled after .+", result.Err.Error())
 		}
@@ -238,8 +238,8 @@ func TestAllWithPooling(t *testing.T) {
 			time.Sleep(time.Millisecond)
 			return nil, nil
 		}
-		workers := map[string]await.Worker{"worker1": worker, "worker2": worker}
-		results := await.All(context.Background(), retryInterval, workers, 16)
+		workers := map[string]retry.Worker{"worker1": worker, "worker2": worker}
+		results := retry.All(context.Background(), retryInterval, workers, 16)
 		for _, result := range results {
 			assert.NoError(t, result.Err)
 		}
@@ -257,13 +257,13 @@ func TestAllWithPooling(t *testing.T) {
 			}
 			return nil, errWork
 		}
-		workers := map[string]await.Worker{"worker1": worker, "worker2": worker}
-		results := await.All(ctx, time.Millisecond, workers, 16)
+		workers := map[string]retry.Worker{"worker1": worker, "worker2": worker}
+		results := retry.All(ctx, time.Millisecond, workers, 16)
 		assert.Len(t, results, 2)
 		for _, result := range results {
 			if assert.Error(t, result.Err) {
-				assert.IsType(t, &await.Error{}, result.Err)
-				var err *await.Error
+				assert.IsType(t, &retry.Error{}, result.Err)
+				var err *retry.Error
 				assert.True(t, errors.As(result.Err, &err))
 			}
 		}
@@ -282,13 +282,13 @@ func TestAllWithPooling(t *testing.T) {
 		worker2 := func(ctx context.Context) (interface{}, error) {
 			return nil, errWork
 		}
-		workers := map[string]await.Worker{"worker1": worker1, "worker2": worker2}
-		results := await.All(ctx, time.Millisecond, workers, 16)
+		workers := map[string]retry.Worker{"worker1": worker1, "worker2": worker2}
+		results := retry.All(ctx, time.Millisecond, workers, 16)
 		assert.Len(t, results, 2)
 		assert.NoError(t, results["worker1"].Err)
 		if assert.Error(t, results["worker2"].Err) {
-			assert.IsType(t, &await.Error{}, results["worker2"].Err)
-			var err *await.Error
+			assert.IsType(t, &retry.Error{}, results["worker2"].Err)
+			var err *retry.Error
 			assert.True(t, errors.As(results["worker2"].Err, &err))
 			assert.Equal(t, errWork, errors.Unwrap(results["worker2"].Err))
 		}
@@ -307,7 +307,7 @@ func ExampleFunc() {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Millisecond)
 	defer cancel()
-	result := await.Func(ctx, 200*time.Microsecond, worker)
+	result := retry.Func(ctx, 200*time.Microsecond, worker)
 	fmt.Println("Result:", result.Value)
 
 	// Output:
@@ -321,10 +321,10 @@ func ExampleAll() {
 	worker2 := func(ctx context.Context) (interface{}, error) {
 		return "ok", nil
 	}
-	workers := map[string]await.Worker{"worker1": worker1, "worker2": worker2}
+	workers := map[string]retry.Worker{"worker1": worker1, "worker2": worker2}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
 	defer cancel()
-	results := await.All(ctx, 2*time.Millisecond, workers, 0)
+	results := retry.All(ctx, 2*time.Millisecond, workers, 0)
 	for name, result := range results {
 		switch {
 		case result.Err != nil:
@@ -349,10 +349,10 @@ func ExampleFirst() {
 		time.Sleep(time.Millisecond)
 		return "I'm slow", nil
 	}
-	workers := map[string]await.Worker{"faster": faster, "slower": slower}
+	workers := map[string]retry.Worker{"faster": faster, "slower": slower}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Millisecond)
 	defer cancel()
-	result := await.First(ctx, retryInterval, workers, 0)
+	result := retry.First(ctx, retryInterval, workers, 0)
 	if result.Err != nil {
 		log.Fatal(result.Err)
 	}
