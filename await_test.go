@@ -65,7 +65,7 @@ func TestAll(t *testing.T) {
 			return nil, nil
 		}
 		workers := map[string]await.Worker{"worker1": worker, "worker2": worker}
-		results := await.All(context.Background(), retryInterval, workers)
+		results := await.All(context.Background(), retryInterval, workers, 0)
 		for _, result := range results {
 			assert.NoError(t, result.Err)
 		}
@@ -81,16 +81,17 @@ func TestAll(t *testing.T) {
 			return nil, errWork
 		}
 		workers := map[string]await.Worker{"worker1": worker, "worker2": worker}
-		results := await.All(ctx, time.Second, workers)
+		results := await.All(ctx, time.Second, workers, 0)
 		assert.Len(t, results, 2)
 		for _, result := range results {
 			if assert.Error(t, result.Err) {
 				assert.IsType(t, &await.Error{}, result.Err)
 				var err *await.Error
 				assert.True(t, errors.As(result.Err, &err))
-				assert.Equal(t, errWork, errors.Unwrap(result.Err))
 			}
 		}
+		assert.Equal(t, errWork, errors.Unwrap(results["worker1"].Err))
+		assert.Equal(t, nil, errors.Unwrap(results["worker2"].Err))
 	})
 
 	t.Run("timeout", func(t *testing.T) {
@@ -105,7 +106,7 @@ func TestAll(t *testing.T) {
 			return nil, errWork
 		}
 		workers := map[string]await.Worker{"worker1": worker1, "worker2": worker2}
-		results := await.All(ctx, time.Second, workers)
+		results := await.All(ctx, time.Second, workers, 0)
 		assert.Len(t, results, 2)
 		assert.NoError(t, results["worker1"].Err)
 		if assert.Error(t, results["worker2"].Err) {
@@ -133,7 +134,7 @@ func TestFirst(t *testing.T) {
 			return "12 Milliseconds", nil
 		}
 		workers := map[string]await.Worker{"worker5": worker5, "worker8": worker8, "worker12": worker12}
-		result := await.First(context.Background(), time.Millisecond, workers)
+		result := await.First(context.Background(), time.Millisecond, workers, 0)
 		if assert.NoError(t, result.Err) {
 			assert.Equal(t, result.Value.(string), "5 Milliseconds")
 		}
@@ -154,7 +155,7 @@ func TestFirst(t *testing.T) {
 			return "12 Milliseconds", nil
 		}
 		workers := map[string]await.Worker{"worker5": worker5, "worker8": worker8, "worker12": worker12}
-		result := await.First(context.Background(), time.Millisecond, workers)
+		result := await.First(context.Background(), time.Millisecond, workers, 0)
 		if assert.NoError(t, result.Err) {
 			assert.Equal(t, result.Value.(string), "8 Milliseconds")
 		}
@@ -180,7 +181,7 @@ func TestFirst(t *testing.T) {
 			return "12 Milliseconds", nil
 		}
 		workers := map[string]await.Worker{"worker5": worker5, "worker8": worker8, "worker12": worker12}
-		result := await.First(context.Background(), time.Millisecond, workers)
+		result := await.First(context.Background(), time.Millisecond, workers, 0)
 		if assert.NoError(t, result.Err) {
 			assert.Equal(t, result.Value.(string), "5 Milliseconds")
 			assert.Equal(t, <-ch, "8 Milliseconds cancelled")
@@ -199,9 +200,71 @@ func TestFirst(t *testing.T) {
 		workers := map[string]await.Worker{"worker1": worker1, "worker2": worker2}
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Millisecond)
 		defer cancel()
-		result := await.First(ctx, time.Millisecond, workers)
+		result := await.First(ctx, time.Millisecond, workers, 0)
 		if assert.Error(t, result.Err) {
 			assert.Regexp(t, "context cancelled after .+", result.Err.Error())
+		}
+	})
+}
+
+func TestAllWithPooling(t *testing.T) {
+	t.Run("noerror", func(t *testing.T) {
+		t.Log("All should return because all worker functions complete successfully.")
+		retryInterval := time.Nanosecond
+		worker := func(ctx context.Context) (interface{}, error) {
+			time.Sleep(time.Millisecond)
+			return nil, nil
+		}
+		workers := map[string]await.Worker{"worker1": worker, "worker2": worker}
+		results := await.All(context.Background(), retryInterval, workers, 16)
+		for _, result := range results {
+			assert.NoError(t, result.Err)
+		}
+	})
+
+	t.Run("cancel", func(t *testing.T) {
+		t.Log("All should return errors because the context cancel function was called.")
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		errWork := fmt.Errorf("foo")
+		worker := func(ctx context.Context) (interface{}, error) {
+			cancel()
+			return nil, errWork
+		}
+		workers := map[string]await.Worker{"worker1": worker, "worker2": worker}
+		results := await.All(ctx, time.Second, workers, 16)
+		assert.Len(t, results, 2)
+		for _, result := range results {
+			if assert.Error(t, result.Err) {
+				assert.IsType(t, &await.Error{}, result.Err)
+				var err *await.Error
+				assert.True(t, errors.As(result.Err, &err))
+			}
+		}
+		assert.Equal(t, errWork, errors.Unwrap(results["worker1"].Err))
+		assert.Equal(t, nil, errors.Unwrap(results["worker2"].Err))
+	})
+
+	t.Run("timeout", func(t *testing.T) {
+		t.Log("All should return error because the context timeout exceeded and not all worker functions completed.")
+		ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
+		defer cancel()
+		errWork := fmt.Errorf("foo")
+		worker1 := func(ctx context.Context) (interface{}, error) {
+			return nil, nil
+		}
+		worker2 := func(ctx context.Context) (interface{}, error) {
+			return nil, errWork
+		}
+		workers := map[string]await.Worker{"worker1": worker1, "worker2": worker2}
+		results := await.All(ctx, time.Second, workers, 16)
+		assert.Len(t, results, 2)
+		assert.NoError(t, results["worker1"].Err)
+		if assert.Error(t, results["worker2"].Err) {
+			assert.IsType(t, &await.Error{}, results["worker2"].Err)
+			var err *await.Error
+			assert.True(t, errors.As(results["worker2"].Err, &err))
+			assert.Equal(t, errWork, errors.Unwrap(results["worker2"].Err))
 		}
 	})
 }
@@ -235,7 +298,7 @@ func ExampleAll() {
 	workers := map[string]await.Worker{"worker1": worker1, "worker2": worker2}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
 	defer cancel()
-	results := await.All(ctx, 2*time.Millisecond, workers)
+	results := await.All(ctx, 2*time.Millisecond, workers, 0)
 	for name, result := range results {
 		switch {
 		case result.Err != nil:
@@ -263,7 +326,7 @@ func ExampleFirst() {
 	workers := map[string]await.Worker{"faster": faster, "slower": slower}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Millisecond)
 	defer cancel()
-	result := await.First(ctx, retryInterval, workers)
+	result := await.First(ctx, retryInterval, workers, 0)
 	if result.Err != nil {
 		log.Fatal(result.Err)
 	}

@@ -30,7 +30,7 @@ Example with multiple worker functions running in parallel:
 		return nil, fmt.Error("worker2 error")
 	}
 	workers := map[string]goawait.Worker{"worker2": worker1, "worker2": worker2}
-	results := await.All(ctx, 200*time.Microsecond, workers)
+	results := await.All(ctx, 200*time.Microsecond, workers, 0)
 	for name, result := range results {
 		fmt.Println("Name:", name, "result:", result)
 	}
@@ -49,7 +49,7 @@ Example with multiple worker functions running in parallel waiting for first to 
 	workers := map[string]goawait.Worker{"faster": faster, "slower": slower}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	result := await.First(ctx, time.Millisecond, workers)
+	result := await.First(ctx, time.Millisecond, workers, 0)
 	if result.Err != nil {
 		log.Fatal(result.Err)
 	}
