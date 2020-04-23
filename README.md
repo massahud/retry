@@ -3,6 +3,14 @@
 ![Go](https://github.com/massahud/retry/workflows/Go/badge.svg)
 
 
+## About The Project
+
+Package retry is a simple module for retrying a function on a defined interval
+until the function succeeds or timeouts. There is support for retrying a
+group of functions at different concurrency levels.
+
+All of the documentation can be found on the [go.dev](https://pkg.go.dev/github.com/massahud/retry?tab=doc) website.
+
 ## Licensing
 
 ```
@@ -20,11 +28,3 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ```
-
-## About The Project
-
-Package retry is a simple module for retrying a function on a defined interval
-until the function succeeds or timeouts. There is support for retrying a
-group of functions at different concurrency levels.
-
-All of the documentation can be found on the [go.dev](https://pkg.go.dev/github.com/massahud/retry?tab=doc) website.
