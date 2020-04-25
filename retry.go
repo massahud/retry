@@ -38,6 +38,11 @@ func (err *Error) Unwrap() error {
 	return err.errWork
 }
 
+// Constants that represent the max goroutines to use.
+const (
+	MaxGoroutines = 0
+)
+
 // Func calls the worker function every retry interval until the worker
 // function succeeds or the context times out.
 func Func(ctx context.Context, retryInterval time.Duration, worker Worker) Result {
@@ -73,19 +78,18 @@ func Func(ctx context.Context, retryInterval time.Duration, worker Worker) Resul
 }
 
 // All calls all the worker functions every retry interval until the worker
-// functions succeeds or the context times out. If the concurrency value is
-// set to 0 or is equal to or greater than the number of workers, a goroutine
-// is created for each worker.
-func All(ctx context.Context, retryInterval time.Duration, workers map[string]Worker, concurrency int) map[string]Result {
+// functions succeeds or the context times out. maxGs represents the number
+// of goroutines to run simultaneously to execute all the worker functions.
+func All(ctx context.Context, retryInterval time.Duration, workers map[string]Worker, maxGs int) map[string]Result {
 	results := make(map[string]Result)
 
 	switch {
-	case concurrency == 0 || concurrency >= len(workers):
-		for result := range workerMap(ctx, retryInterval, workers) {
+	case maxGs <= 0 || maxGs >= len(workers):
+		for result := range workMap(ctx, retryInterval, workers) {
 			results[result.name] = result.Result
 		}
 	default:
-		for result := range workerPool(ctx, retryInterval, workers, concurrency) {
+		for result := range workPool(ctx, retryInterval, workers, maxGs) {
 			results[result.name] = result.Result
 		}
 	}
@@ -95,25 +99,24 @@ func All(ctx context.Context, retryInterval time.Duration, workers map[string]Wo
 
 // First calls all the worker functions every retry interval until the worker
 // functions succeeds or the context times out. Once the first worker function
-// succeeds, this function will return that result. If the concurrency value is
-// set to 0 or is equal to or greater than the number of workers, a goroutine
-// is created for each worker.
-func First(ctx context.Context, retryInterval time.Duration, workers map[string]Worker, concurrency int) Result {
+// succeeds, this function will return that result. maxGs represents the number
+// of goroutines to run simultaneously to execute all the worker functions.
+func First(ctx context.Context, retryInterval time.Duration, workers map[string]Worker, maxGs int) Result {
 	start := time.Now()
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	switch {
-	case concurrency == 0 || concurrency >= len(workers):
-		for result := range workerMap(ctx, retryInterval, workers) {
+	case maxGs <= 0 || maxGs >= len(workers):
+		for result := range workMap(ctx, retryInterval, workers) {
 			if result.Result.Err != nil {
 				continue
 			}
 			return result.Result
 		}
 	default:
-		for result := range workerPool(ctx, retryInterval, workers, concurrency) {
+		for result := range workPool(ctx, retryInterval, workers, maxGs) {
 			if result.Result.Err != nil {
 				continue
 			}
@@ -131,10 +134,10 @@ type namedResult struct {
 	Result
 }
 
-// workerMap calls the map of worker functions every retry interval until the
+// workMap calls the map of worker functions every retry interval until the
 // worker function succeeds or the context times out. As worker functions
 // complete, their results are signaled over the channel for processing.
-func workerMap(ctx context.Context, retry time.Duration, workers map[string]Worker) <-chan namedResult {
+func workMap(ctx context.Context, retryInterval time.Duration, workers map[string]Worker) <-chan namedResult {
 	g := len(workers)
 	results := make(chan namedResult, g)
 
@@ -145,7 +148,7 @@ func workerMap(ctx context.Context, retry time.Duration, workers map[string]Work
 			name, worker := name, worker
 			go func() {
 				defer wg.Done()
-				result := Func(ctx, retry, worker)
+				result := Func(ctx, retryInterval, worker)
 				results <- namedResult{name: name, Result: result}
 			}()
 		}
@@ -156,12 +159,12 @@ func workerMap(ctx context.Context, retry time.Duration, workers map[string]Work
 	return results
 }
 
-// workerPool calls the map of worker functions every retry interval until the
+// workPool calls the map of worker functions every retry interval until the
 // worker function succeeds or the context times out. As worker functions
 // complete, their results are signaled over the channel for processing. Instead
 // of running each worker in a separate goroutine, the worker functions are
 // executed from a pool of goroutines.
-func workerPool(ctx context.Context, retry time.Duration, workers map[string]Worker, concurrency int) <-chan namedResult {
+func workPool(ctx context.Context, retryInterval time.Duration, workers map[string]Worker, concurrency int) <-chan namedResult {
 	g := concurrency
 	results := make(chan namedResult, g)
 
@@ -178,7 +181,7 @@ func workerPool(ctx context.Context, retry time.Duration, workers map[string]Wor
 		go func() {
 			defer wg.Done()
 			for nw := range input {
-				result := Func(ctx, retry, nw.worker)
+				result := Func(ctx, retryInterval, nw.worker)
 				results <- namedResult{name: nw.name, Result: result}
 			}
 		}()
