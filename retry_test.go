@@ -85,7 +85,7 @@ func TestAll(t *testing.T) {
 			return nil, nil
 		}
 		workers := map[string]retry.Worker{"worker1": worker, "worker2": worker}
-		results := retry.All(context.Background(), retryInterval, workers, 0)
+		results := retry.All(context.Background(), retryInterval, workers, retry.MaxGoroutines)
 		for _, result := range results {
 			assert.NoError(t, result.Err)
 		}
@@ -104,7 +104,7 @@ func TestAll(t *testing.T) {
 			return nil, errWork
 		}
 		workers := map[string]retry.Worker{"worker1": worker, "worker2": worker}
-		results := retry.All(ctx, time.Millisecond, workers, 0)
+		results := retry.All(ctx, time.Millisecond, workers, retry.MaxGoroutines)
 		assert.Len(t, results, 2)
 		for _, result := range results {
 			if assert.Error(t, result.Err) {
@@ -129,7 +129,7 @@ func TestAll(t *testing.T) {
 			return nil, errWork
 		}
 		workers := map[string]retry.Worker{"worker1": worker1, "worker2": worker2}
-		results := retry.All(ctx, time.Millisecond, workers, 0)
+		results := retry.All(ctx, time.Millisecond, workers, retry.MaxGoroutines)
 		assert.Len(t, results, 2)
 		assert.NoError(t, results["worker1"].Err)
 		if assert.Error(t, results["worker2"].Err) {
@@ -157,7 +157,7 @@ func TestFirst(t *testing.T) {
 			return "12 Milliseconds", nil
 		}
 		workers := map[string]retry.Worker{"worker5": worker5, "worker8": worker8, "worker12": worker12}
-		result := retry.First(context.Background(), time.Millisecond, workers, 0)
+		result := retry.First(context.Background(), time.Millisecond, workers, retry.MaxGoroutines)
 		if assert.NoError(t, result.Err) {
 			assert.Equal(t, result.Value.(string), "5 Milliseconds")
 		}
@@ -178,7 +178,7 @@ func TestFirst(t *testing.T) {
 			return "12 Milliseconds", nil
 		}
 		workers := map[string]retry.Worker{"worker5": worker5, "worker8": worker8, "worker12": worker12}
-		result := retry.First(context.Background(), time.Millisecond, workers, 0)
+		result := retry.First(context.Background(), time.Millisecond, workers, retry.MaxGoroutines)
 		if assert.NoError(t, result.Err) {
 			assert.Equal(t, result.Value.(string), "8 Milliseconds")
 		}
@@ -204,7 +204,7 @@ func TestFirst(t *testing.T) {
 			return "12 Milliseconds", nil
 		}
 		workers := map[string]retry.Worker{"worker5": worker5, "worker8": worker8, "worker12": worker12}
-		result := retry.First(context.Background(), time.Millisecond, workers, 0)
+		result := retry.First(context.Background(), time.Millisecond, workers, retry.MaxGoroutines)
 		if assert.NoError(t, result.Err) {
 			assert.Equal(t, result.Value.(string), "5 Milliseconds")
 			assert.Equal(t, <-ch, "8 Milliseconds cancelled")
@@ -324,7 +324,7 @@ func ExampleAll() {
 	workers := map[string]retry.Worker{"worker1": worker1, "worker2": worker2}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
 	defer cancel()
-	results := retry.All(ctx, 2*time.Millisecond, workers, 0)
+	results := retry.All(ctx, 2*time.Millisecond, workers, retry.MaxGoroutines)
 	for name, result := range results {
 		switch {
 		case result.Err != nil:
@@ -352,7 +352,7 @@ func ExampleFirst() {
 	workers := map[string]retry.Worker{"faster": faster, "slower": slower}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Millisecond)
 	defer cancel()
-	result := retry.First(ctx, retryInterval, workers, 0)
+	result := retry.First(ctx, retryInterval, workers, retry.MaxGoroutines)
 	if result.Err != nil {
 		log.Fatal(result.Err)
 	}
