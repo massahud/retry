@@ -1,4 +1,4 @@
-package retry
+package main
 
 import (
 	"context"
@@ -9,11 +9,11 @@ import (
 )
 
 // Worker is a function that performs work and returns no error when succeeds.
-type Worker func(ctx context.Context) (interface{}, error)
+type Worker(type T) func(ctx context.Context) (T, error)
 
 // Result is what is returned from the api for any worker function call.
-type Result struct {
-	Value interface{}
+type Result(type T) struct {
+	Value T
 	Err   error
 }
 
@@ -45,22 +45,22 @@ const (
 
 // Func calls the worker function every retry interval until the worker
 // function succeeds or the context times out.
-func Func(ctx context.Context, retryInterval time.Duration, worker Worker) Result {
+func Func(type T)(ctx context.Context, retryInterval time.Duration, worker Worker(T)) Result(T) {
 	var retry *time.Timer
 	start := time.Now()
 
 	if ctx.Err() != nil {
-		return Result{Err: &Error{errWork: nil, since: time.Since(start)}}
+		return Result(T){Err: &Error{errWork: nil, since: time.Since(start)}}
 	}
 
 	for {
 		value, err := worker(ctx)
 		if err == nil {
-			return Result{Value: value}
+			return Result(T){Value: value}
 		}
 
 		if ctx.Err() != nil {
-			return Result{Err: &Error{errWork: err, since: time.Since(start)}}
+			return Result(T){Err: &Error{errWork: err, since: time.Since(start)}}
 		}
 
 		if retry == nil {
@@ -70,7 +70,7 @@ func Func(ctx context.Context, retryInterval time.Duration, worker Worker) Resul
 		select {
 		case <-ctx.Done():
 			retry.Stop()
-			return Result{Err: &Error{errWork: err, since: time.Since(start)}}
+			return Result(T){Err: &Error{errWork: err, since: time.Since(start)}}
 		case <-retry.C:
 			retry.Reset(retryInterval)
 		}
@@ -80,8 +80,8 @@ func Func(ctx context.Context, retryInterval time.Duration, worker Worker) Resul
 // All calls all the worker functions every retry interval until the worker
 // functions succeeds or the context times out. maxGs represents the number
 // of goroutines to run simultaneously to execute all the worker functions.
-func All(ctx context.Context, retryInterval time.Duration, workers map[string]Worker, maxGs int) map[string]Result {
-	results := make(map[string]Result)
+func All(type T)(ctx context.Context, retryInterval time.Duration, workers map[string]Worker(T), maxGs int) map[string]Result(T) {
+	results := make(map[string](Result(T)))
 
 	switch {
 	case maxGs <= 0 || maxGs >= len(workers):
@@ -101,7 +101,7 @@ func All(ctx context.Context, retryInterval time.Duration, workers map[string]Wo
 // functions succeeds or the context times out. Once the first worker function
 // succeeds, this function will return that result. maxGs represents the number
 // of goroutines to run simultaneously to execute all the worker functions.
-func First(ctx context.Context, retryInterval time.Duration, workers map[string]Worker, maxGs int) Result {
+func First(type T)(ctx context.Context, retryInterval time.Duration, workers map[string]Worker(T), maxGs int) Result(T) {
 	start := time.Now()
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -124,22 +124,22 @@ func First(ctx context.Context, retryInterval time.Duration, workers map[string]
 		}
 	}
 
-	return Result{Err: &Error{errWork: errors.New("all worker functions failed"), since: time.Since(start)}}
+	return Result(T){Err: &Error{errWork: errors.New("all worker functions failed"), since: time.Since(start)}}
 }
 
 // namedResult provides support to match a result to a goroutine that
 // performed the work.
-type namedResult struct {
+type namedResult(type T) struct {
 	name string
-	Result
+	Result Result(T)
 }
 
 // workMap calls the map of worker functions every retry interval until the
 // worker function succeeds or the context times out. As worker functions
 // complete, their results are signaled over the channel for processing.
-func workMap(ctx context.Context, retryInterval time.Duration, workers map[string]Worker) <-chan namedResult {
+func workMap(type T)(ctx context.Context, retryInterval time.Duration, workers map[string]Worker(T)) <-chan (namedResult(T)) {
 	g := len(workers)
-	results := make(chan namedResult, g)
+	results := make(chan (namedResult(T)), g)
 
 	go func() {
 		var wg sync.WaitGroup
@@ -148,8 +148,8 @@ func workMap(ctx context.Context, retryInterval time.Duration, workers map[strin
 			name, worker := name, worker
 			go func() {
 				defer wg.Done()
-				result := Func(ctx, retryInterval, worker)
-				results <- namedResult{name: name, Result: result}
+				result := Func(T)(ctx, retryInterval, worker)
+				results <- namedResult(T){name: name, Result: result}
 			}()
 		}
 		wg.Wait()
@@ -164,32 +164,32 @@ func workMap(ctx context.Context, retryInterval time.Duration, workers map[strin
 // complete, their results are signaled over the channel for processing. Instead
 // of running each worker in a separate goroutine, the worker functions are
 // executed from a pool of goroutines.
-func workPool(ctx context.Context, retryInterval time.Duration, workers map[string]Worker, concurrency int) <-chan namedResult {
+func workPool(type T)(ctx context.Context, retryInterval time.Duration, workers map[string]Worker(T), concurrency int) <-chan namedResult(T) {
 	g := concurrency
-	results := make(chan namedResult, g)
+	results := make(chan (namedResult(T)), g)
 
 	var wg sync.WaitGroup
 	wg.Add(g)
 
-	type namedWorker struct {
+	type namedWorker(type T) struct {
 		name   string
-		worker Worker
+		worker Worker(T)
 	}
-	input := make(chan namedWorker, g)
+	input := make(chan (namedWorker(T)), g)
 
 	for i := 0; i < g; i++ {
 		go func() {
 			defer wg.Done()
 			for nw := range input {
 				result := Func(ctx, retryInterval, nw.worker)
-				results <- namedResult{name: nw.name, Result: result}
+				results <- namedResult(T){name: nw.name, Result: result}
 			}
 		}()
 	}
 
 	go func() {
 		for name, worker := range workers {
-			input <- namedWorker{name, worker}
+			input <- namedWorker(T){name, worker}
 		}
 		close(input)
 		wg.Wait()
@@ -197,4 +197,28 @@ func workPool(ctx context.Context, retryInterval time.Duration, workers map[stri
 	}()
 
 	return results
+}
+
+
+func ExampleFunc() {
+	t := time.NewTimer(time.Millisecond)
+	worker := func(ctx context.Context) (string, error) {
+		select {
+		case <-t.C:
+			return "timer finished", nil
+		default:
+			return "", errors.New("poll fail")
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Millisecond)
+	defer cancel()
+	result := Func(ctx, 200*time.Microsecond, worker)
+	fmt.Println("Result:", result.Value)
+
+	// Output:
+	// Result: timer finished
+}
+
+func main() {
+	ExampleFunc()
 }
